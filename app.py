@@ -214,11 +214,13 @@ def build_question_prompt(retrieved_chunks, topic, max_context_chars=3000):
     context = "\n\n".join(ctx_parts)
     prompt = (
         "You are an expert NCERT question generator.\n"
-        "Based ONLY on the following NCERT context, generate 4 HIGH-QUALITY LONG SUBJECTIVE QUESTIONS suitable for board exams.\n"
-        "Do NOT add any information not present in the context. Provide only the questions (no answers).\n\n"
-        f"Topic: {topic}\n\n"
-        f"NCERT Context:\n{context}\n\n"
-        "Generate the questions now:"
+"Based ONLY on the following NCERT context, generate:\n"
+"- 5 Long Subjective Questions\n"
+"Each question MUST be at least 4-5 lines long, descriptive, and based fully on NCERT.\n\n"
+f"Topic: {topic}\n\n"
+f"NCERT Context:\n{context}\n\n"
+"Generate detailed exam-style subjective questions:"
+        
     )
     return prompt
 
