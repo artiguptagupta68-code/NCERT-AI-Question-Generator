@@ -238,8 +238,8 @@ else:
     generator = load_generator()
 
     def build_question_prompt(retrieved_chunks, topic, max_context_chars=3000):
-    ctx_parts = []
-    total = 0
+        ctx_parts = []
+        total = 0
     for r in retrieved_chunks:
         t = r["text"].strip()
         if not t:
