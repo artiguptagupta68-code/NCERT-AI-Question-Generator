@@ -271,6 +271,23 @@ def build_question_prompt(retrieved_chunks, topic, max_context_chars=3000):
     )
 
     return prompt   # FIXED: inside function
+
+# Step X: Define retrieve() function
+def retrieve(query, k=5):
+    if "vectorstore" not in st.session_state:
+        return []
+
+    docs = st.session_state.vectorstore.similarity_search(query, k=k)
+
+    results = []
+    for idx, d in enumerate(docs):
+        results.append({
+            "text": d.page_content,
+            "doc_id": d.metadata.get("doc_id", "unknown"),
+            "chunk_id": d.metadata.get("chunk_id", idx)
+        })
+    return results
+
 def generate_questions(topic):
     retrieved = retrieve(topic)
     if not retrieved:
