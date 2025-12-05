@@ -237,18 +237,23 @@ else:
 
     generator = load_generator()
 
-    def build_question_prompt(retrieved_chunks, topic, max_context_chars=3000):
-        ctx_parts = []
-        total = 0
-    for r in retrieved_chunks:
+    # STEP 7: Build prompt for generating questions
+def build_question_prompt(retrieved_chunks, topic, max_context_chars=3000):
+    ctx_parts = []
+    total = 0
+
+    for r in retrieved_chunks:   # FIXED: moved inside function
         t = r["text"].strip()
         if not t:
             continue
+
         remaining = max_context_chars - total
         if remaining <= 0:
             break
+
         if len(t) > remaining:
             t = t[:remaining]
+
         ctx_parts.append(t)
         total += len(t)
 
@@ -264,11 +269,8 @@ else:
         f"NCERT Context:\n{context}\n\n"
         "Generate clear, correct, exam-style questions:"
     )
-    return (prompt)
 
-#step 8 Modify RAG to generate QUESTIONS
-
-
+    return prompt   # FIXED: inside function
 def generate_questions(topic):
     retrieved = retrieve(topic)
     if not retrieved:
@@ -280,9 +282,6 @@ def generate_questions(topic):
     sources = [{"doc_id": r["doc_id"], "chunk_id": r["chunk_id"]} for r in retrieved]
 
     return {"questions": output.strip(), "sources": sources}
-
-    #step 9:st.subheader("Generate NCERT Questions")
-
 st.subheader("Generate NCERT Questions")
 
 topic = st.text_input("Enter chapter name or topic (e.g., 'Democracy', 'Electricity', 'Reproduction'):")
@@ -295,4 +294,3 @@ if topic:
         st.write("### Context Sources Used")
         for src in result["sources"]:
             st.write(f"{src['doc_id']} / {src['chunk_id']}")
-
