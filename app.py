@@ -346,10 +346,9 @@ if st.button("Generate Questions") and topic.strip():
         # load generator
         generator = load_generator_pipeline()
 
-       def retrieve_chunks(query, index, metadata, top_k=5):
-    """
-    Encode user query → search FAISS → return best matching chunks + their metadata.
-    """
+    def retrieve_chunks(query, index, metadata, top_k=5):
+        """Encode user query → search FAISS → return best matching chunks + their metadata.
+        """
     model = SentenceTransformer(EMBEDDING_MODEL_NAME)
 
     # Encode query
