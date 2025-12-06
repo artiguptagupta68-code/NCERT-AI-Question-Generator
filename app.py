@@ -1,11 +1,18 @@
-# Updated app.py with subject dropdown and multi-question generation
+# Updated and Fixed app.py with subject dropdown, proper FAISS usage,
+# dimension-safe embeddings, and safe retrieval
 
 import streamlit as st
 import os
 import json
 import faiss
+import numpy as np
 from sentence_transformers import SentenceTransformer
 from PyPDF2 import PdfReader
+
+# ----------------------------------
+# IMPORTANT FAISS FIX
+# ----------------------------------
+faiss.omp_set_num_threads(1)
 
 # SUBJECT FOLDERS
 SUBJECT_FOLDERS = {
@@ -24,7 +31,6 @@ model = SentenceTransformer(MODEL_NAME)
 # --------------------------------------
 def load_pdfs(subject_path):
     documents = []
-
     for root, _, files in os.walk(subject_path):
         for f in files:
             if f.lower().endswith(".pdf"):
@@ -44,13 +50,16 @@ def chunk_text(text, chunk_size=300):
     return [" ".join(words[i:i+chunk_size]) for i in range(0, len(words), chunk_size)]
 
 # --------------------------------------
-# EMBEDDING + FAISS INDEX
+# EMBEDDING + FAISS INDEX (FIXED)
 # --------------------------------------
 def embed_and_build_index(chunks):
-    texts = chunks
-    embeddings = model.encode(texts, convert_to_numpy=True)
-    if embeddings.ndim==1:
-        embeddings=embeddings.reshape(1,-1)
+    embeddings = model.encode(chunks, convert_to_numpy=True)
+    
+    # FIX: Handle single row vector issue
+    if embeddings.ndim == 1:
+        embeddings = embeddings.reshape(1, -1)
+
+    embeddings = embeddings.astype("float32")  # FAISS requires float32
 
     dim = embeddings.shape[1]
     index = faiss.IndexFlatL2(dim)
@@ -59,25 +68,36 @@ def embed_and_build_index(chunks):
     return index, chunks
 
 # --------------------------------------
-# RETRIEVAL
+# RETRIEVAL (FIXED)
 # --------------------------------------
 def retrieve(query, index, chunks, top_k=5):
-    query_emb = model.encode([query], convert_to_numpy=True)
+    query_emb = model.encode(query, convert_to_numpy=True)
+
+    # FIX: Ensure 2D shape
+    if query_emb.ndim == 1:
+        query_emb = query_emb.reshape(1, -1)
+
+    query_emb = query_emb.astype("float32")
+
     distances, indices = index.search(query_emb, top_k)
 
     retrieved = []
     for idx in indices[0]:
         if 0 <= idx < len(chunks):
             retrieved.append(chunks[idx])
+
     return retrieved
 
 # --------------------------------------
-# QUESTION GENERATION (SIMPLE TEMPLATE)
+# QUESTION GENERATION
 # --------------------------------------
 def generate_questions(context_list, topic, num_q=5):
     questions = []
     for i in range(num_q):
-        q = f"Q{i+1}. Based on the topic '{topic}', explain in detail: {context_list[i % len(context_list)][:200]}..."
+        q = (
+            f"Q{i+1}. Based on the topic '{topic}', explain in detail: "
+            f"{context_list[i % len(context_list)][:200]}..."
+        )
         questions.append(q)
     return "\n\n".join(questions)
 
@@ -104,13 +124,16 @@ if st.button("Generate Questions"):
     for doc in documents:
         all_chunks.extend(chunk_text(doc))
 
+    # Build FAISS index safely
     index, chunks = embed_and_build_index(all_chunks)
 
+    # Retrieve context
     retrieved = retrieve(query_topic, index, chunks, top_k)
 
     st.write("### Retrieved Context Chunks:")
     st.write(retrieved)
 
+    # Generate questions
     final_questions = generate_questions(retrieved, query_topic, num_questions)
 
     st.write("### Generated Questions:")
