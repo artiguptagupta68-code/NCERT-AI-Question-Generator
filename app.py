@@ -383,7 +383,7 @@ def retrieve_chunks(query, index, metadata, top_k=5):
     return retrieved
        
 # build prompt and generate questions
-        prompt = build_question_prompt(retrieved, topic, num_questions)
+    prompt = build_question_prompt(retrieved, topic, num_questions)
         with st.spinner("Generating long subjective questions..."):
             try:
                 output = generator(prompt, max_length=600, do_sample=False)[0]["generated_text"]
