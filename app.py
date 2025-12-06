@@ -4,10 +4,9 @@ import faiss
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from PyPDF2 import PdfReader
-
-# OCR libraries
 from pdf2image import convert_from_path
 import pytesseract
+from PIL import Image
 
 # ----------------------------------
 # IMPORTANT FAISS FIX
@@ -27,24 +26,24 @@ MODEL_NAME = "sentence-transformers/all-mpnet-base-v2"
 model = SentenceTransformer(MODEL_NAME)
 
 # --------------------------------------
-# LOAD PDF TEXT (with OCR fallback)
+# LOAD PDF TEXT WITH OCR
 # --------------------------------------
-def load_pdfs(subject_path):
+def load_pdfs(subject_path, show_progress=True):
     documents = []
-
-    for root, _, files in os.walk(subject_path):
-        for f in files:
-            if f.lower().endswith(".pdf"):
-                pdf_path = os.path.join(root, f)
-                text = extract_text_from_pdf(pdf_path)
-                if text.strip():
-                    documents.append(text)
+    pdf_files = [f for root, _, files in os.walk(subject_path) 
+                 for f in files if f.lower().endswith(".pdf")]
+    
+    for i, f in enumerate(pdf_files, 1):
+        pdf_path = os.path.join(subject_path, f)
+        if show_progress:
+            st.write(f"Processing PDF {i}/{len(pdf_files)}: {f}")
+        text = extract_text_from_pdf(pdf_path)
+        if text.strip():
+            documents.append(text)
     return documents
 
-def extract_text_from_pdf(pdf_path):
-    """
-    Tries normal PDF text extraction first, then falls back to OCR if empty.
-    """
+def extract_text_from_pdf(pdf_path, dpi=300):
+    """Extract text via PyPDF2, fallback to OCR if empty."""
     # 1️⃣ Try PyPDF2
     try:
         pdf = PdfReader(pdf_path)
@@ -56,13 +55,14 @@ def extract_text_from_pdf(pdf_path):
 
     # 2️⃣ Fallback to OCR
     try:
-        images = convert_from_path(pdf_path)
+        images = convert_from_path(pdf_path, dpi=dpi)
         text = ""
         for img in images:
             text += pytesseract.image_to_string(img)
         return text
-    except:
-        return ""  # If all fails
+    except Exception as e:
+        print("OCR failed:", e)
+        return ""
 
 # --------------------------------------
 # CHUNKING
@@ -79,7 +79,6 @@ def clean_chunks(chunks):
 # --------------------------------------
 def embed_and_build_index(chunks):
     embeddings = model.encode(chunks, convert_to_numpy=True)
-
     cleaned_chunks = []
     cleaned_embeddings = []
 
@@ -100,14 +99,11 @@ def embed_and_build_index(chunks):
 # --------------------------------------
 def retrieve(query, index, chunks, top_k=5):
     query_emb = model.encode(query, convert_to_numpy=True)
-
     if query_emb.ndim == 1:
         query_emb = query_emb.reshape(1, -1)
-
     query_emb = query_emb.astype("float32")
 
     distances, indices = index.search(query_emb, top_k)
-
     retrieved = [chunks[i] for i in indices[0] if 0 <= i < len(chunks)]
     return retrieved
 
@@ -117,13 +113,11 @@ def retrieve(query, index, chunks, top_k=5):
 def generate_questions(context_list, topic, num_q=5):
     if not context_list:
         return "No relevant content found to generate questions."
-
     questions = []
     for i in range(num_q):
         chunk = context_list[i % len(context_list)]
         q = f"Q{i+1}. Based on the topic '{topic}', explain in detail: {chunk[:200]}..."
         questions.append(q)
-
     return "\n\n".join(questions)
 
 # --------------------------------------
@@ -142,7 +136,7 @@ top_k = st.number_input("Retrieval Chunk Count", 1, 20, 5)
 if st.button("Generate Questions"):
     st.write(f"### Selected Subject: {subject}")
 
-    # Load PDF Data
+    # Load PDFs (with progress)
     documents = load_pdfs(subject_path)
 
     all_chunks = []
@@ -150,15 +144,19 @@ if st.button("Generate Questions"):
         all_chunks.extend(clean_chunks(chunk_text(doc)))
 
     if not all_chunks:
-        st.error("No valid text found in PDFs! (Check if PDFs are scanned images)")
+        st.error("No valid text found in PDFs! Ensure Tesseract and Poppler are installed for OCR.")
     else:
-        index, chunks = embed_and_build_index(all_chunks)
-        retrieved = retrieve(query_topic, index, chunks, top_k)
+        with st.spinner("Building FAISS index and generating embeddings..."):
+            index, chunks = embed_and_build_index(all_chunks)
+
+        with st.spinner("Retrieving relevant chunks..."):
+            retrieved = retrieve(query_topic, index, chunks, top_k)
 
         st.write("### Retrieved Context Chunks:")
         st.write(retrieved)
 
-        final_questions = generate_questions(retrieved, query_topic, num_questions)
+        with st.spinner("Generating questions..."):
+            final_questions = generate_questions(retrieved, query_topic, num_questions)
 
         st.write("### Generated Questions:")
         st.write(final_questions)
