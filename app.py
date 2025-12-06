@@ -333,6 +333,29 @@ if st.button("Generate Questions") and topic.strip():
         st.stop()
 
     # build faiss for these chunks
+def build_faiss_index(chunks):
+    """Build a FAISS index from text chunks."""
+
+    model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+
+    # If chunks are strings, use them directly
+    if isinstance(chunks[0], str):
+        texts = chunks
+    else:
+        # If chunks are dicts
+        texts = [c["text"] for c in chunks]
+
+    embeddings = model.encode(texts, convert_to_numpy=True, show_progress_bar=True).astype("float32")
+
+    dim = embeddings.shape[1]
+    index = faiss.IndexFlatL2(dim)
+    index.add(embeddings)
+
+    return index, chunks
+
+
+
+    
     st.session_state["_faiss_chunks_temp"] = chunks
     with st.spinner("Building embeddings & FAISS index (cached)..."):
         emb_model_local, index_local, metadata_local = build_faiss("_faiss_chunks_temp") if False else build_faiss("dummy_key")
