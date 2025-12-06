@@ -347,7 +347,9 @@ if st.button("Generate Questions") and topic.strip():
         generator = load_generator_pipeline()
 
     def retrieve_chunks(query, index, metadata, top_k=5):
-    """Retrieve the top_k most relevant chunks using FAISS search."""
+    """
+    Retrieve the top_k most relevant chunks using FAISS search.
+    """
 
     # Load embedding model
     model = SentenceTransformer(EMBEDDING_MODEL_NAME)
