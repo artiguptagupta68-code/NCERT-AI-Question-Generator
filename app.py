@@ -362,9 +362,7 @@ if st.button("Generate Questions") and topic.strip():
     for idx in indices[0]:
         if 0 <= idx < len(metadata):
             retrieved.append(metadata[idx])
-
-    # Return after finishing the loop
-    return retrieved
+            return retrieved
 
 
 
