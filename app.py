@@ -5,6 +5,10 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 from PyPDF2 import PdfReader
 
+# OCR libraries
+from pdf2image import convert_from_path
+import pytesseract
+
 # ----------------------------------
 # IMPORTANT FAISS FIX
 # ----------------------------------
@@ -23,20 +27,42 @@ MODEL_NAME = "sentence-transformers/all-mpnet-base-v2"
 model = SentenceTransformer(MODEL_NAME)
 
 # --------------------------------------
-# LOAD PDF TEXT
+# LOAD PDF TEXT (with OCR fallback)
 # --------------------------------------
 def load_pdfs(subject_path):
     documents = []
+
     for root, _, files in os.walk(subject_path):
         for f in files:
             if f.lower().endswith(".pdf"):
-                try:
-                    pdf = PdfReader(os.path.join(root, f))
-                    text = "".join([page.extract_text() or "" for page in pdf.pages])
+                pdf_path = os.path.join(root, f)
+                text = extract_text_from_pdf(pdf_path)
+                if text.strip():
                     documents.append(text)
-                except:
-                    pass
     return documents
+
+def extract_text_from_pdf(pdf_path):
+    """
+    Tries normal PDF text extraction first, then falls back to OCR if empty.
+    """
+    # 1️⃣ Try PyPDF2
+    try:
+        pdf = PdfReader(pdf_path)
+        text = "".join([page.extract_text() or "" for page in pdf.pages])
+        if text.strip():
+            return text
+    except:
+        pass
+
+    # 2️⃣ Fallback to OCR
+    try:
+        images = convert_from_path(pdf_path)
+        text = ""
+        for img in images:
+            text += pytesseract.image_to_string(img)
+        return text
+    except:
+        return ""  # If all fails
 
 # --------------------------------------
 # CHUNKING
@@ -45,17 +71,15 @@ def chunk_text(text, chunk_size=300):
     words = text.split()
     return [" ".join(words[i:i+chunk_size]) for i in range(0, len(words), chunk_size)]
 
-# Remove empty/useless chunks
 def clean_chunks(chunks):
     return [c for c in chunks if c.strip() != "" and len(c.split()) > 3]
 
 # --------------------------------------
-# EMBEDDING + FAISS INDEX (FIXED)
+# EMBEDDING + FAISS INDEX
 # --------------------------------------
 def embed_and_build_index(chunks):
     embeddings = model.encode(chunks, convert_to_numpy=True)
 
-    # Remove zero embeddings
     cleaned_chunks = []
     cleaned_embeddings = []
 
@@ -65,7 +89,6 @@ def embed_and_build_index(chunks):
             cleaned_embeddings.append(emb)
 
     embeddings = np.array(cleaned_embeddings).astype("float32")
-
     dim = embeddings.shape[1]
     index = faiss.IndexFlatL2(dim)
     index.add(embeddings)
@@ -73,7 +96,7 @@ def embed_and_build_index(chunks):
     return index, cleaned_chunks
 
 # --------------------------------------
-# RETRIEVAL (FIXED)
+# RETRIEVAL
 # --------------------------------------
 def retrieve(query, index, chunks, top_k=5):
     query_emb = model.encode(query, convert_to_numpy=True)
@@ -107,7 +130,7 @@ def generate_questions(context_list, topic, num_q=5):
 # STREAMLIT UI
 # --------------------------------------
 st.title("NCERT AI Question Generator 🔍")
-st.write("Generate subjective questions from NCERT context.")
+st.write("Generate subjective questions from NCERT context (supports scanned PDFs).")
 
 subject = st.selectbox("Select Subject", list(SUBJECT_FOLDERS.keys()))
 subject_path = SUBJECT_FOLDERS[subject]
@@ -127,7 +150,7 @@ if st.button("Generate Questions"):
         all_chunks.extend(clean_chunks(chunk_text(doc)))
 
     if not all_chunks:
-        st.error("No valid text found in PDFs!")
+        st.error("No valid text found in PDFs! (Check if PDFs are scanned images)")
     else:
         index, chunks = embed_and_build_index(all_chunks)
         retrieved = retrieve(query_topic, index, chunks, top_k)
