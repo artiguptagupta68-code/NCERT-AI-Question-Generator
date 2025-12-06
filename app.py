@@ -357,13 +357,11 @@ query_vec = model.encode([query], convert_to_numpy=True).astype("float32")
 
     # Search FAISS index
 distances, indices = index.search(query_vec, top_k)
-
 retrieved = []
 for idx in indices[0]:
     if 0 <= idx < len(metadata):
         retrieved.append(metadata[idx])
-        
-return retrieved
+        return retrieved
     
 prompt = build_question_prompt(retrieved, topic, num_questions)
     
