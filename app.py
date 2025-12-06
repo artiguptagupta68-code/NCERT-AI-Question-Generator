@@ -363,14 +363,14 @@ if st.button("Generate Questions") and topic.strip():
             try:
                 output = generator(prompt, max_length=600, do_sample=False)[0]["generated_text"]
             except Exception as e:
-            st.error(f"Generation failed: {e}")
-            output = ""
-            if output:
-                st.write("### Generated Long Subjective Questions")
-                st.markdown(output)
-            else:
-                st.error("No output produced by the generator.")
-                st.write("### Sources used (file — chunk_id)")
+                st.error(f"Generation failed: {e}")
+                output = ""
+                if output:
+                    st.write("### Generated Long Subjective Questions")
+                    st.markdown(output)
+                else:
+                    st.error("No output produced by the generator.")
+                    st.write("### Sources used (file — chunk_id)")
                 for r in retrieved:
                     st.write(f"{r['doc_id']} — {r['chunk_id']}")
 
