@@ -345,31 +345,11 @@ if st.button("Generate Questions") and topic.strip():
 
         # load generator
     generator = load_generator_pipeline()
-    def retrieve_chunks(query, index, metadata, top_k=5):
-        """Retrieve the top_k most relevant chunks using FAISS search."""
-        # Load embedding mode
-    model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-
-    # Encode the query
-    query_vec = model.encode([query], convert_to_numpy=True).astype("float32")
-
-    # Search in FAISS index
-    distances, indices = index.search(query_vec, top_k)
-
-    # Collect relevant metadata
-    retrieved = []
-    for idx in indices[0]:
-        if 0 <= idx < len(metadata):
-            retrieved.append(metadata[idx])
-            return retrieved
-
-
-
-
-def retrieve_chunks(query, index, metadata, top_k=5):
+   def retrieve_chunks(query, index, metadata, top_k=5):
     """
     Retrieve the top_k most relevant chunks based on FAISS similarity search.
     """
+    # Load embedding model
     model = SentenceTransformer(EMBEDDING_MODEL_NAME)
 
     # Encode query text
@@ -378,13 +358,15 @@ def retrieve_chunks(query, index, metadata, top_k=5):
     # Search FAISS index
     distances, indices = index.search(query_vec, top_k)
 
+    # Collect relevant metadata
     retrieved = []
     for idx in indices[0]:
         if 0 <= idx < len(metadata):
             retrieved.append(metadata[idx])
 
+    # Return after loop
     return retrieved
-       
+
 # build prompt and generate questions
     prompt = build_question_prompt(retrieved, topic, num_questions)
     with st.spinner("Generating long subjective questions..."):
