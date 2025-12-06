@@ -347,21 +347,24 @@ if st.button("Generate Questions") and topic.strip():
         generator = load_generator_pipeline()
 
     def retrieve_chunks(query, index, metadata, top_k=5):
-        """Encode user query → search FAISS → return best matching chunks + their metadata.
-        """
+    """
+    Retrieve the top_k most relevant chunks using FAISS search.
+    """
     model = SentenceTransformer(EMBEDDING_MODEL_NAME)
 
-    # Encode query
+    # Encode the query text
     query_vec = model.encode([query], convert_to_numpy=True).astype("float32")
 
-    # Search FAISS
+    # Search in FAISS
     distances, indices = index.search(query_vec, top_k)
 
     retrieved = []
     for idx in indices[0]:
-        if idx < len(metadata):
+        if 0 <= idx < len(metadata):
             retrieved.append(metadata[idx])
-            return retrieved
+
+    return retrieved
+
 
 def retrieve_chunks(query, index, metadata, top_k=5):
     """
