@@ -348,14 +348,14 @@ if st.button("Generate Questions") and topic.strip():
 
     def retrieve_chunks(query, index, metadata, top_k=5):
     """Retrieve the top_k most relevant chunks using FAISS search."""
-    
+
     # Load embedding model
     model = SentenceTransformer(EMBEDDING_MODEL_NAME)
 
     # Encode the query text
     query_vec = model.encode([query], convert_to_numpy=True).astype("float32")
 
-    # Search FAISS index
+    # Search in FAISS
     distances, indices = index.search(query_vec, top_k)
 
     retrieved = []
