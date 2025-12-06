@@ -353,17 +353,17 @@ if st.button("Generate Questions") and topic.strip():
         model = SentenceTransformer(EMBEDDING_MODEL_NAME)
 
     # Encode query text
-    query_vec = model.encode([query], convert_to_numpy=True).astype("float32")
+query_vec = model.encode([query], convert_to_numpy=True).astype("float32")
 
     # Search FAISS index
-    distances, indices = index.search(query_vec, top_k)
+distances, indices = index.search(query_vec, top_k)
 
-    retrieved = []
-    for idx in indices[0]:
-        if 0 <= idx < len(metadata):
-            retrieved.append(metadata[idx])
-            
-            return retrieved
+retrieved = []
+for idx in indices[0]:
+    if 0 <= idx < len(metadata):
+        retrieved.append(metadata[idx])
+        
+        return retrieved
     
     prompt = build_question_prompt(retrieved, topic, num_questions)
     
