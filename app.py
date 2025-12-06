@@ -49,6 +49,8 @@ def chunk_text(text, chunk_size=300):
 def embed_and_build_index(chunks):
     texts = chunks
     embeddings = model.encode(texts, convert_to_numpy=True)
+    if embeddings.ndim==1:
+        embeddings=embeddings.reshape(1,-1)
 
     dim = embeddings.shape[1]
     index = faiss.IndexFlatL2(dim)
