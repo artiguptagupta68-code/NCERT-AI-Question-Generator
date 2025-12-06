@@ -82,7 +82,7 @@ def generate_questions(context_list, topic, num_q=5):
 # --------------------------------------
 # STREAMLIT UI
 # --------------------------------------
-st.set_title("NCERT AI Question Generator 🔍")
+st.title("NCERT AI Question Generator 🔍")
 st.write("Generate subjective questions from NCERT context.")
 
 # Subject Dropdown
