@@ -355,7 +355,6 @@ if st.button("Generate Questions") and topic.strip():
 
     # Search in FAISS
     distances, indices = index.search(query_vec, top_k)
-
     retrieved = []
     for idx in indices[0]:
         if 0 <= idx < len(metadata):
