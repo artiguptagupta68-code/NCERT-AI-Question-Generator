@@ -365,12 +365,12 @@ for idx in indices[0]:
         
 return retrieved
     
-    prompt = build_question_prompt(retrieved, topic, num_questions)
+prompt = build_question_prompt(retrieved, topic, num_questions)
     
-    with st.spinner("Generating long subjective questions..."):
-        try:
-            
-            output = generator(prompt, max_length=600, do_sample=False)[0]["generated_text"]
+with st.spinner("Generating long subjective questions..."):
+    try:
+        
+        output = generator(prompt, max_length=600, do_sample=False)[0]["generated_text"]
         except Exception as e:
             st.error(f"Generation failed: {e}")
             output = ""
