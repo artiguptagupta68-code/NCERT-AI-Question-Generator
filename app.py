@@ -360,9 +360,9 @@ if st.button("Generate Questions") and topic.strip():
                 return retrieved
                 prompt = build_question_prompt(retrieved, topic, num_questions)
         with st.spinner("Generating long subjective questions..."):
-        try:
-            output = generator(prompt, max_length=600, do_sample=False)[0]["generated_text"]
-        except Exception as e:
+            try:
+                output = generator(prompt, max_length=600, do_sample=False)[0]["generated_text"]
+            except Exception as e:
             st.error(f"Generation failed: {e}")
             output = ""
             if output:
