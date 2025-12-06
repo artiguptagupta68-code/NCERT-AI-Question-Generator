@@ -347,27 +347,22 @@ if st.button("Generate Questions") and topic.strip():
     generator = load_generator_pipeline()
    
    def retrieve_chunks(query, index, metadata, top_k=5):
-    """
-    Retrieve the top_k most relevant chunks based on FAISS similarity search.
-    """
-    from sentence_transformers import SentenceTransformer  # make sure import is inside file
-    
-    # Load embedding model
-    model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-
-    # Encode query text
-    query_vec = model.encode([query], convert_to_numpy=True).astype("float32")
-
-    # Search FAISS index
-    distances, indices = index.search(query_vec, top_k)
-
-    # Collect relevant metadata
-    retrieved = []
-    for idx in indices[0]:
-        if 0 <= idx < len(metadata):
-            retrieved.append(metadata[idx])
-
-    # Return after collecting all
+       """
+       Retrieve the top_k most relevant chunks based on FAISS similarity search.
+       """
+       from sentence_transformers import SentenceTransformer  # make sure import is inside file
+       # Load embedding model
+model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+# Encode query text
+query_vec = model.encode([query], convert_to_numpy=True).astype("float32")
+# Search FAISS index
+distances, indices = index.search(query_vec, top_k)
+# Collect relevant metadata
+retrieved = []
+for idx in indices[0]:
+    if 0 <= idx < len(metadata):
+        retrieved.append(metadata[idx])
+        # Return after collecting all
     return retrieved
 
 
