@@ -361,7 +361,7 @@ for idx in indices[0]:
     if 0 <= idx < len(metadata):
         retrieved.append(metadata[idx])
        
-        return retrieved
+    return retrieved
     
 prompt = build_question_prompt(retrieved, topic, num_questions)
     
