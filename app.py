@@ -344,13 +344,12 @@ if st.button("Generate Questions") and topic.strip():
         st.info(f"Retrieved {len(retrieved)} chunks as context.")
 
         # load generator
-    generator = load_generator_pipeline()
-    
-    def retrieve_chunks(query, index, metadata, top_k=5):
-        """
-        Retrieve the top_k most relevant chunks based on FAISS similarity search.
-        """
-        model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+generator = load_generator_pipeline()
+def retrieve_chunks(query, index, metadata, top_k=5):
+    """
+    Retrieve the top_k most relevant chunks based on FAISS similarity search.
+    """
+    model = SentenceTransformer(EMBEDDING_MODEL_NAME)
 
     # Encode query text
 query_vec = model.encode([query], convert_to_numpy=True).astype("float32")
@@ -361,6 +360,7 @@ retrieved = []
 for idx in indices[0]:
     if 0 <= idx < len(metadata):
         retrieved.append(metadata[idx])
+       
         return retrieved
     
 prompt = build_question_prompt(retrieved, topic, num_questions)
