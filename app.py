@@ -364,7 +364,26 @@ if st.button("Generate Questions") and topic.strip():
             retrieved.append(metadata[idx])
     return retrieved
 
-        # build prompt and generate questions
+def retrieve_chunks(query, index, metadata, top_k=5):
+    """
+    Retrieve the top_k most relevant chunks based on FAISS similarity search.
+    """
+    model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+
+    # Encode query text
+    query_vec = model.encode([query], convert_to_numpy=True).astype("float32")
+
+    # Search FAISS index
+    distances, indices = index.search(query_vec, top_k)
+
+    retrieved = []
+    for idx in indices[0]:
+        if 0 <= idx < len(metadata):
+            retrieved.append(metadata[idx])
+
+    return retrieved
+       
+# build prompt and generate questions
         prompt = build_question_prompt(retrieved, topic, num_questions)
         with st.spinner("Generating long subjective questions..."):
             try:
