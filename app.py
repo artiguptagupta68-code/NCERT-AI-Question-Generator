@@ -8,15 +8,15 @@ import gdown
 import numpy as np
 import torch
 import re
-
+from sentence_transformers import SentenceTransformer
 from pypdf import PdfReader
+
 try:
     import fitz  # PyMuPDF
     _HAS_PYMUPDF = True
 except Exception:
     _HAS_PYMUPDF = False
 
-from sentence_transformers import SentenceTransformer
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import faiss
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
@@ -24,7 +24,7 @@ from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
 # ----------------------------
 # CONFIG
 # ----------------------------
-FILE_ID = "1gdiCsGOeIyaDlJ--9qon8VTya3dbjr6G"  # Drive file id
+FILE_ID = "1gdiCsGOeIyaDlJ--9qon8VTya3dbjr6G"
 ZIP_PATH = "ncrt.zip"
 EXTRACT_DIR = "ncert_extracted"
 CHUNK_SIZE = 800
@@ -35,10 +35,10 @@ DEFAULT_TOP_K = 5
 
 st.set_page_config(page_title="NCERT AI Question Generator", layout="wide")
 st.title("📘 NCERT AI Question Generator")
-st.caption("Choose a subject, enter a topic; app will use that subject's PDFs to generate long subjective questions.")
+st.caption("Enter any topic; the app will detect the most relevant subject folder and generate long subjective questions.")
 
 # ----------------------------
-# Utilities
+# Utilities: download & unzip
 # ----------------------------
 def download_zip_from_drive(file_id: str, out_path: str) -> bool:
     if os.path.exists(out_path):
@@ -58,7 +58,7 @@ def extract_zip(zip_path: str, extract_to: str):
     os.makedirs(extract_to, exist_ok=True)
     with zipfile.ZipFile(zip_path, "r") as z:
         z.extractall(extract_to)
-    # nested zips
+    # handle nested zips
     for root, _, files in os.walk(extract_to):
         for f in files:
             if f.lower().endswith(".zip"):
@@ -71,6 +71,9 @@ def extract_zip(zip_path: str, extract_to: str):
                 except Exception:
                     pass
 
+# ----------------------------
+# PDF reading
+# ----------------------------
 def read_pdf_pypdf(path):
     try:
         reader = PdfReader(path)
@@ -105,51 +108,47 @@ def read_pdf_pymupdf(path):
 
 def read_pdf_text(path):
     text = read_pdf_pypdf(path)
-    if text and text.strip():
+    if text.strip():
         return text
     if _HAS_PYMUPDF:
         text = read_pdf_pymupdf(path)
-        if text and text.strip():
+        if text.strip():
             return text
     return ""
 
-def list_subfolders(folder):
-    if not os.path.exists(folder):
-        return []
-    return [d for d in os.listdir(folder) if os.path.isdir(os.path.join(folder, d))]
-
 # ----------------------------
-# Load & chunk
+# Load and chunk PDFs
 # ----------------------------
 def load_docs_from_folder(folder):
     docs = []
+    if not os.path.exists(folder):
+        return docs
     for root, _, files in os.walk(folder):
         for f in files:
             if f.lower().endswith(".pdf"):
-                p = os.path.join(root, f)
-                text = read_pdf_text(p)
-                if text and text.strip():
+                text = read_pdf_text(os.path.join(root, f))
+                if text.strip():
                     docs.append({"doc_id": f, "text": text})
     return docs
 
 def split_documents(docs, chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP):
     splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-    out = []
+    all_chunks = []
     for doc in docs:
-        doc_id = doc.get("doc_id", "unknown")
-        text = doc.get("text", "")
-        if not text.strip():
-            continue
-        parts = splitter.split_text(text)
+        parts = splitter.split_text(doc["text"])
         for i, p in enumerate(parts):
-            out.append({"doc_id": doc_id, "chunk_id": f"{Path(doc_id).stem}_chunk_{i}", "text": p})
-    return out
+            all_chunks.append({
+                "doc_id": doc["doc_id"],
+                "chunk_id": f"{Path(doc['doc_id']).stem}_chunk_{i}",
+                "text": p
+            })
+    return all_chunks
 
 # ----------------------------
-# Cached builders
+# Build FAISS index
 # ----------------------------
-@st.cache_resource(show_spinner=True)
-def build_faiss(chunks):
+@st.cache_resource
+def build_faiss_index(chunks):
     if not chunks:
         return None, None, None
     model = SentenceTransformer(EMBEDDING_MODEL_NAME)
@@ -161,238 +160,144 @@ def build_faiss(chunks):
     metadata = [{"doc_id": c["doc_id"], "chunk_id": c["chunk_id"], "text": c["text"]} for c in chunks]
     return model, index, metadata
 
-@st.cache_resource(show_spinner=True)
-def load_generator():
+# ----------------------------
+# Generator pipeline
+# ----------------------------
+@st.cache_resource
+def load_generator_pipeline():
     device = 0 if torch.cuda.is_available() else -1
     tokenizer = AutoTokenizer.from_pretrained(GEN_MODEL_NAME)
     model = AutoModelForSeq2SeqLM.from_pretrained(GEN_MODEL_NAME)
     if device == 0:
         model = model.to("cuda")
-    gen = pipeline("text2text-generation", model=model, tokenizer=tokenizer, device=device)
-    return gen
+    return pipeline("text2text-generation", model=model, tokenizer=tokenizer, device=device)
 
 # ----------------------------
-# Retrieval
+# Dynamic subject detection
 # ----------------------------
-def retrieve_chunks(query, index, metadata, top_k=DEFAULT_TOP_K):
-    if index is None or metadata is None:
-        return []
-    emb_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-    q_emb = emb_model.encode([query], convert_to_numpy=True).astype("float32")
-    k = min(top_k, index.ntotal) if hasattr(index, "ntotal") else top_k
-    if k <= 0:
-        return []
-    D, I = index.search(q_emb, k)
-    retrieved = []
-    for idx in I[0]:
-        if 0 <= idx < len(metadata):
-            retrieved.append(metadata[idx])
+def detect_best_subject_folder(base_dir, topic, min_matches=1):
+    topic_words = re.findall(r"\w+", topic.lower())
+    if not topic_words:
+        return None
+    best_folder, best_score = None, 0
+    candidate_folders = [os.path.join(base_dir, d) for d in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, d))]
+    candidate_folders.append(base_dir)  # fallback
+    for folder in candidate_folders:
+        score, scanned = 0, 0
+        for root, _, files in os.walk(folder):
+            for f in files:
+                if not f.lower().endswith(".pdf"):
+                    continue
+                text = read_pdf_text(os.path.join(root, f)).lower()
+                for w in topic_words:
+                    score += text.count(w)
+                scanned += 1
+                if scanned >= 5:
+                    break
+            if scanned >= 5:
+                break
+        if score > best_score:
+            best_score = score
+            best_folder = folder
+    return best_folder if best_score >= min_matches else None
+
+# ----------------------------
+# Retrieve chunks
+# ----------------------------
+def retrieve_chunks(query, index, metadata, top_k=5):
+    model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+    query_vec = model.encode([query], convert_to_numpy=True).astype("float32")
+    distances, indices = index.search(query_vec, top_k)
+    retrieved = [metadata[i] for i in indices[0] if i < len(metadata)]
     return retrieved
 
 # ----------------------------
-# Prompt builder
+# Build prompt
 # ----------------------------
 def build_question_prompt(retrieved_chunks, topic, num_questions, max_context_chars=3000):
-    ctx_parts = []
-    total = 0
+    ctx, total = [], 0
     for r in retrieved_chunks:
-        t = r.get("text", "").strip()
+        t = r["text"].strip()
         if not t:
             continue
         remaining = max_context_chars - total
         if remaining <= 0:
             break
-        if len(t) > remaining:
-            t = t[:remaining]
-        ctx_parts.append(t)
+        ctx.append(t[:remaining])
         total += len(t)
-    context = "\n\n".join(ctx_parts)
-    prompt = (
-        "You are an expert NCERT question generator. Based ONLY on the NCERT context below, "
+    context = "\n\n".join(ctx)
+    return (
+        f"You are an expert NCERT question generator. Based ONLY on the NCERT context below, "
         f"generate {num_questions} HIGH-QUALITY long subjective questions on the topic '{topic}'. "
-        "Each question must be at least 3-4 lines long (exam-style, concept-rich), and should NOT include answers. "
-        "Do not invent facts beyond the provided context. Produce numbered questions only.\n\n"
+        "Each question must be at least 3-4 lines long, exam-style, concept-rich, and do NOT include answers. "
+        "Do not invent facts beyond the provided context.\n\n"
         f"NCERT Context:\n{context}\n\n"
         "Generate the questions now:"
     )
-    return prompt
 
 # ----------------------------
-# Prepare corpus
+# Orchestration & UI
 # ----------------------------
-st.write("Preparing NCERT content (first run may take a while)...")
-ok = download_zip_from_drive(FILE_ID, ZIP_PATH)
-if not ok:
-    st.error("Failed to download ZIP from Google Drive. Check FILE_ID/permissions or upload ZIP to backend.")
-    st.stop()
+st.write("Preparing NCERT content (may take a while on first run)...")
 
-if not zipfile.is_zipfile(ZIP_PATH):
-    st.error("Downloaded file is not a valid ZIP. Check the file on Drive.")
+# Download and extract ZIP
+if not download_zip_from_drive(FILE_ID, ZIP_PATH):
+    st.error("Failed to download ZIP. Check FILE_ID or permissions.")
     st.stop()
-
-# extract
 if not os.path.exists(EXTRACT_DIR) or not os.listdir(EXTRACT_DIR):
     extract_zip(ZIP_PATH, EXTRACT_DIR)
+    st.success(f"ZIP extracted to: {EXTRACT_DIR}")
 
-# subjects dropdown (manual)
-SUBJECT_CHOICES = ["Economics", "Psychology", "Sociology", "Polity", "Business Studies"]
-subject_choice = st.sidebar.selectbox("Select subject (manual)", SUBJECT_CHOICES + ["Auto-detect"])
-
-# user inputs
-topic = st.text_input("Enter chapter name or topic (e.g., 'Constitutional Design', 'Electricity', 'Reproduction'):")
+# User input
+topic = st.text_input("Enter chapter name or topic (e.g., 'Constitutional Design', 'Electricity'):")
 num_questions = st.slider("Number of long subjective questions", 1, 10, 5)
-top_k = st.number_input("Retrieval: number of chunks to use as context", min_value=1, max_value=20, value=DEFAULT_TOP_K)
-
-# helper: map selected subject to actual folder (fuzzy)
-def find_folder_for_subject(choice, base_dir=EXTRACT_DIR):
-    # normalize
-    want = choice.lower().strip().replace(" ", "")
-    folders = list_subfolders(base_dir)
-    for f in folders:
-        fnorm = f.lower().replace(" ", "")
-        if want in fnorm or fnorm in want:
-            return os.path.join(base_dir, f)
-    # try keyword matching
-    keywords = {
-        "economics": ["econ", "economics"],
-        "psychology": ["psych", "psychology"],
-        "sociology": ["sociology", "soc"],
-        "polity": ["polity", "political", "politics", "politicalscience", "political_science"],
-        "businessstudies": ["business", "businessstudies", "bst", "business_studies"]
-    }
-    for key, kws in keywords.items():
-        if key in want or any(k in want for k in kws):
-            # search folders for any folder with those keywords
-            for f in folders:
-                fnorm = f.lower().replace(" ", "")
-                if any(k in fnorm for k in kws):
-                    return os.path.join(base_dir, f)
-    return None
+top_k = st.number_input("Number of chunks to use as context", 1, 20, DEFAULT_TOP_K)
 
 if st.button("Generate Questions") and topic.strip():
-    # determine folder
-    if subject_choice == "Auto-detect":
-        # simple auto-detect: scan all subject folders for highest keyword counts
-        best_folder = None
-        best_score = 0
-        words = re.findall(r"\w+", topic.lower())
-        for f in list_subfolders(EXTRACT_DIR):
-            folder_path = os.path.join(EXTRACT_DIR, f)
-            scanned = 0
-            score = 0
-            for root, _, files in os.walk(folder_path):
-                for ff in files:
-                    if not ff.lower().endswith(".pdf"):
-                        continue
-                    scanned += 1
-                    p = os.path.join(root, ff)
-                    txt = read_pdf_text(p).lower()
-                    for w in words:
-                        score += txt.count(w)
-                    if scanned >= 5:
-                        break
-                if scanned >= 5:
-                    break
-            if score > best_score:
-                best_score = score
-                best_folder = folder_path
-        if best_folder:
-            selected_folder = best_folder
-            subject_name = os.path.relpath(best_folder, EXTRACT_DIR)
-            st.success(f"Detected subject: **{subject_name}**")
-        else:
-            selected_folder = EXTRACT_DIR
-            subject_name = "Full Corpus (no single subject detected)"
-            st.info("No strong subject match; using full corpus.")
+    with st.spinner("Detecting subject folder for this topic..."):
+        folder = detect_best_subject_folder(EXTRACT_DIR, topic)
+    if folder:
+        st.success(f"Selected folder: {os.path.relpath(folder, EXTRACT_DIR)}")
     else:
-        # manual selection mapping
-        mapped = find_folder_for_subject(subject_choice, EXTRACT_DIR)
-        if mapped:
-            selected_folder = mapped
-            subject_name = os.path.relpath(mapped, EXTRACT_DIR)
-            st.success(f"Selected subject: **{subject_name}**")
-        else:
-            selected_folder = EXTRACT_DIR
-            subject_name = subject_choice + " (folder not found; using full corpus)"
-            st.warning(f"No exact folder found for '{subject_choice}'. Using full corpus instead.")
+        st.info("No exact folder match. Using full corpus.")
+        folder = EXTRACT_DIR
 
-    # load docs from only the selected folder
-    with st.spinner("Loading PDFs from selected folder..."):
-        docs = load_docs_from_folder(selected_folder)
-        st.info(f"Loaded {len(docs)} readable PDF documents from: {subject_name}")
+    with st.spinner("Loading and chunking PDFs..."):
+        docs = load_docs_from_folder(folder)
         if not docs:
-            st.error("No readable documents found in selected folder. Try another subject or upload correct ZIP.")
+            st.error("No readable PDFs found.")
             st.stop()
+        chunks = split_documents(docs)
+        st.info(f"Created {len(chunks)} chunks.")
 
-    with st.spinner("Creating chunks..."):
-        chunks = split_documents(docs, chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
-        st.info(f"Created {len(chunks)} chunks from selected subject.")
-
-    if not chunks:
-        st.error("No text chunks created. Cannot proceed.")
-        st.stop()
-
-    # build faiss for these chunks
-def build_faiss_index(chunks):
-    """Build a FAISS index from text chunks."""
-
-    model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-
-    # If chunks are strings, use them directly
-    if isinstance(chunks[0], str):
-        texts = chunks
-    else:
-        # If chunks are dicts
-        texts = [c["text"] for c in chunks]
-
-    embeddings = model.encode(texts, convert_to_numpy=True, show_progress_bar=True).astype("float32")
-
-    dim = embeddings.shape[1]
-    index = faiss.IndexFlatL2(dim)
-    index.add(embeddings)
-
-    return index, chunks
-
-
-
-    
     st.session_state["_faiss_chunks_temp"] = chunks
-    with st.spinner("Building embeddings & FAISS index (cached)..."):
-        emb_model_local, index_local, metadata_local = build_faiss("_faiss_chunks_temp") if False else build_faiss("dummy_key")
-        # Note: build_faiss reads chunks from session_state key _faiss_chunks_temp
+    with st.spinner("Building embeddings & FAISS index..."):
+        _, index, metadata = build_faiss_index(chunks)
     st.session_state.pop("_faiss_chunks_temp", None)
+    st.success("FAISS index ready.")
 
-    if index_local is None or metadata_local is None:
-        st.error("Failed to build FAISS index.")
-        st.stop()
-    st.success("FAISS index ready for selected subject.")
-
-    # retrieve chunks relevant to topic
     with st.spinner("Retrieving relevant chunks..."):
-        retrieved = retrieve_chunks(topic, index_local, metadata_local, top_k=top_k)
+        retrieved = retrieve_chunks(topic, index, metadata, top_k=top_k)
     if not retrieved:
-        st.warning("No relevant content found in this subject for that topic. Try different keyword or increase retrieval size.")
+        st.warning("No relevant content found.")
         st.stop()
-    st.info(f"Retrieved {len(retrieved)} chunks as context.")
 
-    # load generator
-    generator = load_generator()
-
-    # build prompt & generate
+    generator = load_generator_pipeline()
     prompt = build_question_prompt(retrieved, topic, num_questions)
+
     with st.spinner("Generating long subjective questions..."):
         try:
-            out = generator(prompt, max_length=600, do_sample=False)[0]["generated_text"]
+            output = generator(prompt, max_length=600, do_sample=False)[0]["generated_text"]
         except Exception as e:
             st.error(f"Generation failed: {e}")
-            out = ""
+            output = ""
 
-    if out:
-        st.write("### Generated Long Subjective Questions")
-        st.markdown(out)
-        st.write(f"### 📌 Subject Used: **{subject_name}**")
-        st.write("### Sources used (file — chunk_id)")
-        for r in retrieved:
-            st.write(f"{r['doc_id']} — {r['chunk_id']}")
+    if output:
+        st.write("### Generated Questions")
+        st.markdown(output)
     else:
-        st.error("No output produced by the generator.")
+        st.error("No output produced.")
+
+    st.write("### Sources used")
+    for r in retrieved:
+        st.write(f"{r['doc_id']} — {r['chunk_id']}")
