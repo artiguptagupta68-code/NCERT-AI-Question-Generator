@@ -1,9 +1,5 @@
-# Updated and Fixed app.py with subject dropdown, proper FAISS usage,
-# dimension-safe embeddings, and safe retrieval
-
 import streamlit as st
 import os
-import json
 import faiss
 import numpy as np
 from sentence_transformers import SentenceTransformer
@@ -49,18 +45,22 @@ def chunk_text(text, chunk_size=300):
     words = text.split()
     return [" ".join(words[i:i+chunk_size]) for i in range(0, len(words), chunk_size)]
 
+# Remove empty/useless chunks
+def clean_chunks(chunks):
+    return [c for c in chunks if c.strip() != "" and len(c.split()) > 3]
+
 # --------------------------------------
 # EMBEDDING + FAISS INDEX (FIXED)
 # --------------------------------------
 def embed_and_build_index(chunks):
     embeddings = model.encode(chunks, convert_to_numpy=True)
 
-    # Remove empty embedding rows (mpnet returns 0-vectors for empty text)
+    # Remove zero embeddings
     cleaned_chunks = []
     cleaned_embeddings = []
 
     for emb, ch in zip(embeddings, chunks):
-        if np.linalg.norm(emb) > 0.1:   # filter invalid vectors
+        if np.linalg.norm(emb) > 0.1:
             cleaned_chunks.append(ch)
             cleaned_embeddings.append(emb)
 
@@ -72,26 +72,12 @@ def embed_and_build_index(chunks):
 
     return index, cleaned_chunks
 
-    
-    # FIX: Handle single row vector issue
-    if embeddings.ndim == 1:
-        embeddings = embeddings.reshape(1, -1)
-
-    embeddings = embeddings.astype("float32")  # FAISS requires float32
-
-    dim = embeddings.shape[1]
-    index = faiss.IndexFlatL2(dim)
-    index.add(embeddings)
-
-    return index, chunks
-
 # --------------------------------------
 # RETRIEVAL (FIXED)
 # --------------------------------------
 def retrieve(query, index, chunks, top_k=5):
     query_emb = model.encode(query, convert_to_numpy=True)
 
-    # FIX: Ensure 2D shape
     if query_emb.ndim == 1:
         query_emb = query_emb.reshape(1, -1)
 
@@ -99,24 +85,22 @@ def retrieve(query, index, chunks, top_k=5):
 
     distances, indices = index.search(query_emb, top_k)
 
-    retrieved = []
-    for idx in indices[0]:
-        if 0 <= idx < len(chunks):
-            retrieved.append(chunks[idx])
-
+    retrieved = [chunks[i] for i in indices[0] if 0 <= i < len(chunks)]
     return retrieved
 
 # --------------------------------------
 # QUESTION GENERATION
 # --------------------------------------
 def generate_questions(context_list, topic, num_q=5):
+    if not context_list:
+        return "No relevant content found to generate questions."
+
     questions = []
     for i in range(num_q):
-        q = (
-            f"Q{i+1}. Based on the topic '{topic}', explain in detail: "
-            f"{context_list[i % len(context_list)][:200]}..."
-        )
+        chunk = context_list[i % len(context_list)]
+        q = f"Q{i+1}. Based on the topic '{topic}', explain in detail: {chunk[:200]}..."
         questions.append(q)
+
     return "\n\n".join(questions)
 
 # --------------------------------------
@@ -125,7 +109,6 @@ def generate_questions(context_list, topic, num_q=5):
 st.title("NCERT AI Question Generator 🔍")
 st.write("Generate subjective questions from NCERT context.")
 
-# Subject Dropdown
 subject = st.selectbox("Select Subject", list(SUBJECT_FOLDERS.keys()))
 subject_path = SUBJECT_FOLDERS[subject]
 
@@ -136,26 +119,23 @@ top_k = st.number_input("Retrieval Chunk Count", 1, 20, 5)
 if st.button("Generate Questions"):
     st.write(f"### Selected Subject: {subject}")
 
-   
     # Load PDF Data
     documents = load_pdfs(subject_path)
+
     all_chunks = []
     for doc in documents:
         all_chunks.extend(clean_chunks(chunk_text(doc)))
 
-def clean_chunks(chunks):
-    return [c for c in chunks if c.strip() != "" and len(c.split()) > 3]
-    # Build FAISS index safely
-    index, chunks = embed_and_build_index(all_chunks)
+    if not all_chunks:
+        st.error("No valid text found in PDFs!")
+    else:
+        index, chunks = embed_and_build_index(all_chunks)
+        retrieved = retrieve(query_topic, index, chunks, top_k)
 
-    # Retrieve context
-    retrieved = retrieve(query_topic, index, chunks, top_k)
+        st.write("### Retrieved Context Chunks:")
+        st.write(retrieved)
 
-    st.write("### Retrieved Context Chunks:")
-    st.write(retrieved)
+        final_questions = generate_questions(retrieved, query_topic, num_questions)
 
-    # Generate questions
-    final_questions = generate_questions(retrieved, query_topic, num_questions)
-
-    st.write("### Generated Questions:")
-    st.write(final_questions)
+        st.write("### Generated Questions:")
+        st.write(final_questions)
