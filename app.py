@@ -361,8 +361,7 @@ retrieved = []
 for idx in indices[0]:
     if 0 <= idx < len(metadata):
         retrieved.append(metadata[idx])
-        # Return after collecting all
-    return retrieved
+        return retrieved
 
 
 # build prompt and generate questions
