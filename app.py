@@ -8,6 +8,8 @@ import gdown
 import numpy as np
 import torch
 import re
+from sentence_transformers import SentenceTransformer
+
 
 from pypdf import PdfReader
 try:
@@ -343,6 +345,24 @@ if st.button("Generate Questions") and topic.strip():
 
         # load generator
         generator = load_generator_pipeline()
+
+       def retrieve_chunks(query, index, metadata, top_k=5):
+    """
+    Encode user query → search FAISS → return best matching chunks + their metadata.
+    """
+    model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+
+    # Encode query
+    query_vec = model.encode([query], convert_to_numpy=True).astype("float32")
+
+    # Search FAISS
+    distances, indices = index.search(query_vec, top_k)
+
+    retrieved = []
+    for idx in indices[0]:
+        if idx < len(metadata):
+            retrieved.append(metadata[idx])
+    return retrieved
 
         # build prompt and generate questions
         prompt = build_question_prompt(retrieved, topic, num_questions)
