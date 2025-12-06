@@ -363,7 +363,16 @@ def retrieve_chunks(query, index, metadata, top_k=5):
         if 0 <= idx < len(metadata):
             retrieved.append(metadata[idx])
 
-    return retrieved  # ✅ Must be outside the for-loop, but inside the function
+    return retrieved
+if index_local is None or metadata_local is None:
+    st.error("FAISS index or metadata is not ready.")
+else:
+    retrieved = retrieve_chunks(topic, index_local, metadata_local, top_k=top_k)
+if not retrieved:
+    st.warning("No relevant content found for this topic.")
+else:
+    prompt = build_question_prompt(retrieved, topic, num_questions)
+
 
     
 prompt = build_question_prompt(retrieved, topic, num_questions)
