@@ -364,8 +364,8 @@ if st.button("Generate Questions") and topic.strip():
             retrieved.append(metadata[idx])
 
     return retrieved
-d
-                prompt = build_question_prompt(retrieved, topic, num_questions)
+    
+    prompt = build_question_prompt(retrieved, topic, num_questions)
         with st.spinner("Generating long subjective questions..."):
             try:
                 output = generator(prompt, max_length=600, do_sample=False)[0]["generated_text"]
