@@ -345,6 +345,27 @@ if st.button("Generate Questions") and topic.strip():
 
         # load generator
 generator = load_generator_pipeline()
+
+# Initialize first
+index_local = None
+metadata_local = None
+embed_model_local = None
+
+# After user enters subject:
+if subject:
+    # ... load PDFs
+    # ... build FAISS
+    index_local = index
+    metadata_local = metadata
+    embed_model_local = embed_model
+
+# Now safe to use
+if index_local is None or metadata_local is None:
+    st.error("Subject not loaded. Please select a subject.")
+else:
+    retrieved = retrieve_chunks(topic, index_local, metadata_local, top_k=top_k)
+
+
 def retrieve_chunks(query, index, metadata, top_k=5):
     """
     Retrieve the top_k most relevant chunks based on FAISS similarity search.
