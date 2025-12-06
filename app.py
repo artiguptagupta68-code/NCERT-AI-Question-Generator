@@ -361,7 +361,7 @@ if st.button("Generate Questions") and topic.strip():
     for idx in indices[0]:
         if idx < len(metadata):
             retrieved.append(metadata[idx])
-    return retrieved
+            return retrieved
 
 def retrieve_chunks(query, index, metadata, top_k=5):
     """
