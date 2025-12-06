@@ -54,6 +54,24 @@ def chunk_text(text, chunk_size=300):
 # --------------------------------------
 def embed_and_build_index(chunks):
     embeddings = model.encode(chunks, convert_to_numpy=True)
+
+    # Remove empty embedding rows (mpnet returns 0-vectors for empty text)
+    cleaned_chunks = []
+    cleaned_embeddings = []
+
+    for emb, ch in zip(embeddings, chunks):
+        if np.linalg.norm(emb) > 0.1:   # filter invalid vectors
+            cleaned_chunks.append(ch)
+            cleaned_embeddings.append(emb)
+
+    embeddings = np.array(cleaned_embeddings).astype("float32")
+
+    dim = embeddings.shape[1]
+    index = faiss.IndexFlatL2(dim)
+    index.add(embeddings)
+
+    return index, cleaned_chunks
+
     
     # FIX: Handle single row vector issue
     if embeddings.ndim == 1:
@@ -118,12 +136,15 @@ top_k = st.number_input("Retrieval Chunk Count", 1, 20, 5)
 if st.button("Generate Questions"):
     st.write(f"### Selected Subject: {subject}")
 
+   
     # Load PDF Data
     documents = load_pdfs(subject_path)
     all_chunks = []
     for doc in documents:
-        all_chunks.extend(chunk_text(doc))
+        all_chunks.extend(clean_chunks(chunk_text(doc)))
 
+def clean_chunks(chunks):
+    return [c for c in chunks if c.strip() != "" and len(c.split()) > 3]
     # Build FAISS index safely
     index, chunks = embed_and_build_index(all_chunks)
 
