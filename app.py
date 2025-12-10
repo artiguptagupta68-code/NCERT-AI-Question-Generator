@@ -90,38 +90,8 @@ def extract_zip(zip_path: str, extract_to: str):
                     # ignore nested extract failures
                     pass
 
-# --------------------------------------------------------------------
-# PDF TEXT EXTRACTORS
-# --------------------------------------------------------------------
-def read_pdf_pypdf(path):
-    try:
-        reader = PdfReader(path)
-        text = ""
-        for page in reader.pages:
-            t = page.extract_text()
-            if t:
-                text += t + "\n"
-        return text
-    except:
-        return ""
 
-def read_pdf_pymupdf(path):
-    try:
-        doc = fitz.open(path)
-        text = ""
-        for page in doc:
-            t = page.get_text()
-            if t:
-                text += t + "\n"
-        return text
-    except:
-        return ""
 
-def read_pdf_text(path):
-    txt = read_pdf_pypdf(path)
-    if txt.strip():
-        return txt
-    return read_pdf_pymupdf(path)
 
 # --------------------------------------------------------------------
 # LOAD PDFS
