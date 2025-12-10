@@ -138,18 +138,18 @@ def read_pdf_text(path):
     return ""  # empty if cannot extract
 
         # ---------------- Embeddings & FAISS ----------------
-        embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-        embeddings = embedding_model.embed_documents(chunks)
+embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+embeddings = embedding_model.embed_documents(chunks)
 
-        embedding_dim = len(embeddings[0])
-        index = faiss.IndexFlatL2(embedding_dim)
-        embedding_matrix = np.array(embeddings).astype("float32")
-        index.add(embedding_matrix)
+embedding_dim = len(embeddings[0])
+index = faiss.IndexFlatL2(embedding_dim)
+embedding_matrix = np.array(embeddings).astype("float32")
+index.add(embedding_matrix)
 
-        faiss_index = {
-            "index": index,
-            "chunks": chunks
-        }
+faiss_index = {
+    "index": index,
+    "chunks": chunks
+}
 def load_docs_from_folder(folder):
     docs = []
     for root, _, files in os.walk(folder):
