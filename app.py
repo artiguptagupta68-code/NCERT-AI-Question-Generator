@@ -1,178 +1,62 @@
-
 import streamlit as st
-import zipfile
-import os
-import fitz  # PyMuPDF
-import numpy as np
-from sentence_transformers import SentenceTransformer
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceEmbeddings
-import faiss
-from transformers import AutoTokenizer, AutoModelForCausalLM
-import torch
-import re
-
-st.set_page_config(page_title="📚 AI NCERT Question Generator", layout="wide")
-st.title("📚 AI NCERT Question Generator (Offline)")
-
-SUBJECTS = ["Economics", "Polity", "Business Studies", "Psychology", "Sociology"]
-
-# ---------------- Upload ZIP ----------------
 import os
 import zipfile
 import shutil
 from pathlib import Path
-import streamlit as st
-import gdown
 import numpy as np
 import torch
-
+import re
+import fitz  # PyMuPDF
 from pypdf import PdfReader
-try:
-    import fitz  # PyMuPDF
-    _HAS_PYMUPDF = True
-except Exception:
-    _HAS_PYMUPDF = False
 
+import faiss
 from sentence_transformers import SentenceTransformer
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-import faiss
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
-# ----------------------------
-# CONFIG
-# ----------------------------
-FILE_ID = "1gdiCsGOeIyaDlJ--9qon8VTya3dbjr6G"  # your Drive file id
-ZIP_PATH = "ncrt.zip"
-EXTRACT_DIR = "ncert_extracted"
+# --------------------------------------------------------------------
+# STREAMLIT UI
+# --------------------------------------------------------------------
+st.set_page_config(page_title="📘 NCERT Offline Question Generator", layout="wide")
+st.title("📘 NCERT Offline Question Generator (Transformer Based)")
+st.caption("Generates competitive-exam style questions using RAG + Transformers (offline).")
+
 CHUNK_SIZE = 800
 CHUNK_OVERLAP = 150
-EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"   # small & fast
-GEN_MODEL_NAME = "google/flan-t5-base"
-TOP_K = 4
 
-st.set_page_config(page_title="NCERT AI Question Generator", layout="wide")
-st.title("📘 NCERT AI Question Generator")
-st.caption("Generates NCERT-style subjective questions from topic/chapter (RAG + Transformers)")
-
-# Utilities: download, unzip, nested zips
-# ----------------------------
-def download_zip_from_drive(file_id: str, out_path: str) -> bool:
-    if os.path.exists(out_path):
-        return True
-    try:
-        url = f"https://drive.google.com/uc?id={file_id}"
-        gdown.download(url, out_path, quiet=False)
-        return os.path.exists(out_path)
-    except Exception as e:
-        st.warning(f"Download failed: {e}")
-        return False
-
-def extract_zip(zip_path: str, extract_to: str):
-    if not os.path.exists(zip_path):
-        raise FileNotFoundError(zip_path)
-    shutil.rmtree(extract_to, ignore_errors=True)
-    os.makedirs(extract_to, exist_ok=True)
-    with zipfile.ZipFile(zip_path, "r") as z:
-        z.extractall(extract_to)
-    # handle nested zips
-    for root, _, files in os.walk(extract_to):
-        for f in files:
-            if f.lower().endswith(".zip"):
-                nested = os.path.join(root, f)
-                nested_dir = os.path.join(root, Path(f).stem)
-                os.makedirs(nested_dir, exist_ok=True)
-                try:
-                    with zipfile.ZipFile(nested, "r") as nz:
-                        nz.extractall(nested_dir)
-                except Exception:
-                    # ignore nested extract failures
-                    pass
-
-# ----------------------------
-# Read PDF text robustly
-# ----------------------------
+# --------------------------------------------------------------------
+# PDF TEXT PARSERS
+# --------------------------------------------------------------------
 def read_pdf_pypdf(path):
     try:
         reader = PdfReader(path)
         text = ""
-        for p in reader.pages:
-            try:
-                t = p.extract_text()
-                if t:
-                    text += t + "\n"
-            except Exception:
-                continue
+        for page in reader.pages:
+            t = page.extract_text()
+            if t:
+                text += t + "\n"
         return text
-    except Exception:
+    except:
         return ""
 
 def read_pdf_pymupdf(path):
-    if not _HAS_PYMUPDF:
-        return ""
     try:
         doc = fitz.open(path)
         text = ""
         for page in doc:
-            try:
-                t = page.get_text()
-                if t:
-                    text += t + "\n"
-            except Exception:
-                continue
+            t = page.get_text()
+            if t:
+                text += t + "\n"
         return text
-    except Exception:
+    except:
         return ""
 
 def read_pdf_text(path):
-    # try pypdf first
-    text = read_pdf_pypdf(path)
-    if text and text.strip():
-        return text
-    # fallback to pymupdf if available
-    if _HAS_PYMUPDF:
-        text = read_pdf_pymupdf(path)
-        if text and text.strip():
-            return text
-    return ""  # empty if cannot extract
-
-# ----------------------------
-# Utilities: download, unzip, nested zips
-# ----------------------------
-def download_zip_from_drive(file_id: str, out_path: str) -> bool:
-    if os.path.exists(out_path):
-        return True
-    try:
-        url = f"https://drive.google.com/uc?id={file_id}"
-        gdown.download(url, out_path, quiet=False)
-        return os.path.exists(out_path)
-    except Exception as e:
-        st.warning(f"Download failed: {e}")
-        return False
-
-def extract_zip(zip_path: str, extract_to: str):
-    if not os.path.exists(zip_path):
-        raise FileNotFoundError(zip_path)
-    shutil.rmtree(extract_to, ignore_errors=True)
-    os.makedirs(extract_to, exist_ok=True)
-    with zipfile.ZipFile(zip_path, "r") as z:
-        z.extractall(extract_to)
-    # handle nested zips
-    for root, _, files in os.walk(extract_to):
-        for f in files:
-            if f.lower().endswith(".zip"):
-                nested = os.path.join(root, f)
-                nested_dir = os.path.join(root, Path(f).stem)
-                os.makedirs(nested_dir, exist_ok=True)
-                try:
-                    with zipfile.ZipFile(nested, "r") as nz:
-                        nz.extractall(nested_dir)
-                except Exception:
-                    # ignore nested extract failures
-                    pass
-
-
-
+    txt = read_pdf_pypdf(path)
+    if txt.strip():
+        return txt
+    return read_pdf_pymupdf(path)
 
 # --------------------------------------------------------------------
 # LOAD PDFS
@@ -182,12 +66,12 @@ def load_docs(folder):
     for root, _, files in os.walk(folder):
         for f in files:
             if f.lower().endswith(".pdf"):
-                pdf_path = os.path.join(root, f)
-                text = read_pdf_text(pdf_path)
+                fpath = os.path.join(root, f)
+                text = read_pdf_text(fpath)
                 if text.strip():
                     docs.append({"doc_id": f, "text": text})
                 else:
-                    st.warning(f"Unreadable PDF skipped: {f}")
+                    st.warning(f"Skipped unreadable PDF: {f}")
     return docs
 
 # --------------------------------------------------------------------
@@ -209,71 +93,91 @@ def split_docs(docs):
             })
     return chunks
 
+# --------------------------------------------------------------------
+# FILE UPLOAD
+# --------------------------------------------------------------------
+st.subheader("Upload NCERT ZIP File")
+uploaded_zip = st.file_uploader("Upload a ZIP containing NCERT PDFs", type=["zip"])
 
-    # split
+if uploaded_zip:
+    # save ZIP
+    with open("ncert.zip", "wb") as f:
+        f.write(uploaded_zip.read())
+
+    # extract
+    EXTRACT_DIR = "ncert_data"
+    shutil.rmtree(EXTRACT_DIR, ignore_errors=True)
+
+    with zipfile.ZipFile("ncert.zip", "r") as z:
+        z.extractall(EXTRACT_DIR)
+
+    st.success("ZIP extracted successfully.")
+
+    # load PDFs
+    docs = load_docs(EXTRACT_DIR)
+    st.info(f"Loaded {len(docs)} PDFs.")
+
+    # chunking
     chunks = split_docs(docs)
+    st.info(f"Created {len(chunks)} text chunks.")
 
     # ----------------------------------------------------------------
-    # EMBEDDINGS + FAISS INDEX
+    # EMBEDDINGS + FAISS
     # ----------------------------------------------------------------
-    st.info("Embedding chunks...")
-
     embedder = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-    embeddings = embedder.embed_documents([c["text"] for c in chunks])
-    embedding_dim = len(embeddings[0])
+    chunk_texts = [c["text"] for c in chunks]
 
+    st.info("Embedding chunks...")
+    embeddings = embedder.embed_documents(chunk_texts)
+
+    embedding_dim = len(embeddings[0])
     index = faiss.IndexFlatL2(embedding_dim)
     index.add(np.array(embeddings, dtype="float32"))
 
-    st.success("FAISS index built.")
+    st.success("FAISS index ready.")
 
     # ----------------------------------------------------------------
-    # QUESTION GENERATION SECTION
+    # QUESTION GENERATION
     # ----------------------------------------------------------------
     st.subheader("Generate Questions")
 
     topic = st.text_input("Enter topic/chapter keyword:")
-    num_q = st.number_input("How many questions?", 1, 20, 5)
+    num_q = st.number_input("Number of questions:", 1, 20, 5)
 
     if st.button("Generate Questions"):
         if not topic.strip():
-            st.warning("Enter a topic / chapter name.")
+            st.warning("Please enter a topic.")
         else:
-            # Retrieve relevant chunks
-            model_embed = SentenceTransformer("all-MiniLM-L6-v2")
-            q_emb = model_embed.encode([topic], convert_to_numpy=True)
+            # find relevant chunks
+            embed_model = SentenceTransformer("all-MiniLM-L6-v2")
+            q_emb = embed_model.encode([topic], convert_to_numpy=True)
             D, I = index.search(q_emb.astype("float32"), k=min(5, len(chunks)))
 
             context = "\n\n".join(chunks[i]["text"] for i in I[0])
 
-            # ------------------------------------------------------------
-            # LOAD OFFLINE TRANSFORMER MODEL
-            # ------------------------------------------------------------
+            # load transformer
             gen_model_name = "facebook/opt-125m"
             tokenizer = AutoTokenizer.from_pretrained(gen_model_name)
             model = AutoModelForCausalLM.from_pretrained(gen_model_name)
             model.to("cpu")
 
-            # ------------------------------------------------------------
-            # PROMPT FOR HIGH-QUALITY COMPETITIVE QUESTIONS
-            # ------------------------------------------------------------
+            # prompt
             prompt = f"""
-You are an expert NCERT teacher and UPSC-grade question maker.
+You are an expert NCERT teacher and UPSC-level examiner.
 
-Generate {num_q} **high-quality, complete, competitive-exam style questions** 
-from the topic: **{topic}**
+Generate {num_q} competitive-exam style questions based on the topic: {topic}
 
-Rules for the questions:
-- Must start with an interrogative word (What, Why, How, Explain, Describe…)
-- Must end with a **question mark**
-- Must be meaningful, complete and based ONLY on the context
-- Level: Competitive exam (UPSC, State PSC, CBSE Boards)
+Requirements:
+- Each question must start with an interrogative word (What, Why, How, Explain, Describe, Discuss…)
+- Each question must end with a question mark
+- Questions must be complete, meaningful, and based on the context
+- Difficulty: UPSC / State PSC / CBSE Board level
 
 Context:
 {context}
 
 Now generate the questions:
-"""
+            """
 
             inputs = tokenizer(prompt, return_tensors="pt", truncation=True)
             with torch.no_grad():
@@ -286,29 +190,29 @@ Now generate the questions:
 
             raw = tokenizer.decode(output[0], skip_special_tokens=True)
 
-            # ------------------------------------------------------------
-            # EXTRACT CLEAN QUESTIONS
-            # ------------------------------------------------------------
+            # extract clean questions
             lines = raw.split("\n")
             final_q = []
 
             for ln in lines:
                 ln = ln.strip()
+
+                # avoid useless lines
                 if len(ln.split()) < 4:
                     continue
 
+                # must start with interrogative
                 if re.match(r"^(What|Why|How|Explain|Describe|Discuss|Define|Evaluate|Examine|Analyze)\b", ln, re.I):
                     if not ln.endswith("?"):
                         ln += "?"
                     final_q.append(ln)
 
-            # Limit to required count
             final_q = final_q[:num_q]
 
-            # ------------------------------------------------------------
-            # DISPLAY
-            # ------------------------------------------------------------
+            # display
             st.subheader("Generated Questions")
-            for i, q in enumerate(final_q, 1):
-                st.write(f"**{i}. {q}**")
-
+            if len(final_q) == 0:
+                st.warning("Model could not extract proper questions. Try a different topic.")
+            else:
+                for i, q in enumerate(final_q, 1):
+                    st.write(f"**{i}. {q}**")
