@@ -54,7 +54,7 @@ TOP_K = 4
 st.set_page_config(page_title="NCERT AI Question Generator", layout="wide")
 st.title("📘 NCERT AI Question Generator")
 st.caption("Generates NCERT-style subjective questions from topic/chapter (RAG + Transformers)")
- ----------------------------
+
 # Utilities: download, unzip, nested zips
 # ----------------------------
 def download_zip_from_drive(file_id: str, out_path: str) -> bool:
