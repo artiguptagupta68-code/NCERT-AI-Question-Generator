@@ -10,3 +10,4 @@ PyMuPDF
 pypdf
 gdown
 PyPDF2
+peft
