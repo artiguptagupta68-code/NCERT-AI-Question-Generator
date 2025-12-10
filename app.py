@@ -45,8 +45,8 @@ DEFAULT_TOP_K = 6
 DEFAULT_NUM_Q = 6
 
 # LoRA-fine-tuned model (offline)
-BASE_MODEL = "./base_model"  # path to your local base model
-LORA_WEIGHTS = "./ncert_lora_model"  # path to LoRA weights
+BASE_MODEL =  "ncert-base-model" # path to your local base model
+LORA_WEIGHTS = "ncert_lora_model"  # path to LoRA weights
 
 st.set_page_config(page_title="NCERT RAG — Offline LoRA Question Generator", layout="wide")
 st.title("NCERT RAG — Offline LoRA-powered Question Generator (1/2/5 mark)")
