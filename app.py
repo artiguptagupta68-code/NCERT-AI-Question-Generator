@@ -128,25 +128,6 @@ def split_docs(docs):
             })
     return chunks
 
-# --------------------------------------------------------------------
-# FILE UPLOAD
-# --------------------------------------------------------------------
-st.subheader("Upload NCERT ZIP")
-uploaded_zip = st.file_uploader("Upload NCERT PDFs (ZIP)", type=["zip"])
-
-if uploaded_zip:
-    with open("ncert.zip", "wb") as f:
-        f.write(uploaded_zip.read())
-
-    EXTRACT_DIR = "ncert_data"
-    shutil.rmtree(EXTRACT_DIR, ignore_errors=True)
-
-    with zipfile.ZipFile("ncert.zip", "r") as z:
-        z.extractall(EXTRACT_DIR)
-
-    # load all PDFs
-    docs = load_docs(EXTRACT_DIR)
-    st.success(f"Loaded {len(docs)} PDFs")
 
     # split
     chunks = split_docs(docs)
