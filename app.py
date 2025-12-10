@@ -18,65 +18,124 @@ st.title("📚 AI NCERT Question Generator (Offline)")
 SUBJECTS = ["Economics", "Polity", "Business Studies", "Psychology", "Sociology"]
 
 # ---------------- Upload ZIP ----------------
-uploaded_file = st.file_uploader("Upload NCERT ZIP file", type="zip")
+import os
+import zipfile
+import shutil
+from pathlib import Path
+import streamlit as st
+import gdown
+import numpy as np
+import torch
 
-subject = st.selectbox("Select Subject", SUBJECTS)
-num_q = st.number_input("Number of total questions", min_value=1, max_value=20, value=6)
+from pypdf import PdfReader
+try:
+    import fitz  # PyMuPDF
+    _HAS_PYMUPDF = True
+except Exception:
+    _HAS_PYMUPDF = False
 
-if uploaded_file:
-    zip_path = os.path.join("/tmp", uploaded_file.name)
-    with open(zip_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
+from sentence_transformers import SentenceTransformer
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+import faiss
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
 
-    # ---------------- Extract ZIP ----------------
-    extract_folder = "/tmp/ncert_extracted"
-    os.makedirs(extract_folder, exist_ok=True)
+# ----------------------------
+# CONFIG
+# ----------------------------
+FILE_ID = "1gdiCsGOeIyaDlJ--9qon8VTya3dbjr6G"  # your Drive file id
+ZIP_PATH = "ncrt.zip"
+EXTRACT_DIR = "ncert_extracted"
+CHUNK_SIZE = 800
+CHUNK_OVERLAP = 150
+EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"   # small & fast
+GEN_MODEL_NAME = "google/flan-t5-base"
+TOP_K = 4
 
-    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-        zip_ref.extractall(extract_folder)
+st.set_page_config(page_title="NCERT AI Question Generator", layout="wide")
+st.title("📘 NCERT AI Question Generator")
+st.caption("Generates NCERT-style subjective questions from topic/chapter (RAG + Transformers)")
 
-    # Extract nested ZIPs
-    for root, dirs, files in os.walk(extract_folder):
-        for file in files:
-            if file.endswith(".zip"):
-                nested_zip_path = os.path.join(root, file)
-                nested_extract_path = os.path.join(root, file.replace(".zip", ""))
-                os.makedirs(nested_extract_path, exist_ok=True)
-                with zipfile.ZipFile(nested_zip_path, 'r') as zip_ref:
-                    zip_ref.extractall(nested_extract_path)
+# ----------------------------
+# Utilities: download, unzip, nested zips
+# ----------------------------
+def download_zip_from_drive(file_id: str, out_path: str) -> bool:
+    if os.path.exists(out_path):
+        return True
+    try:
+        url = f"https://drive.google.com/uc?id={file_id}"
+        gdown.download(url, out_path, quiet=False)
+        return os.path.exists(out_path)
+    except Exception as e:
+        st.warning(f"Download failed: {e}")
+        return False
 
-    # ---------------- Load documents ----------------
-    def load_documents(folder, subject_keyword):
-        texts = []
-        for root, dirs, files in os.walk(folder):
-            if subject_keyword.lower() in root.lower():
-                for file in files:
-                    path = os.path.join(root, file)
-                    if file.lower().endswith(".pdf"):
-                        try:
-                            doc = fitz.open(path)
-                            text = ""
-                            for page in doc:
-                                text += page.get_text()
-                            texts.append(text)
-                        except Exception as e:
-                            st.warning(f"Failed to read PDF {path}: {e}")
-                    elif file.lower().endswith(".txt"):
-                        try:
-                            with open(path, "r", encoding="utf-8") as f:
-                                texts.append(f.read())
-                        except Exception as e:
-                            st.warning(f"Failed to read TXT {path}: {e}")
-        return texts
+def extract_zip(zip_path: str, extract_to: str):
+    if not os.path.exists(zip_path):
+        raise FileNotFoundError(zip_path)
+    shutil.rmtree(extract_to, ignore_errors=True)
+    os.makedirs(extract_to, exist_ok=True)
+    with zipfile.ZipFile(zip_path, "r") as z:
+        z.extractall(extract_to)
+    # handle nested zips
+    for root, _, files in os.walk(extract_to):
+        for f in files:
+            if f.lower().endswith(".zip"):
+                nested = os.path.join(root, f)
+                nested_dir = os.path.join(root, Path(f).stem)
+                os.makedirs(nested_dir, exist_ok=True)
+                try:
+                    with zipfile.ZipFile(nested, "r") as nz:
+                        nz.extractall(nested_dir)
+                except Exception:
+                    # ignore nested extract failures
+                    pass
 
-    texts = load_documents(extract_folder, subject)
-    
-    if len(texts) == 0:
-        st.warning("No PDF/TXT files found for this subject!")
-    else:
-        # ---------------- Split documents ----------------
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-        chunks = text_splitter.split_text(" ".join(texts))
+# ----------------------------
+# Read PDF text robustly
+# ----------------------------
+def read_pdf_pypdf(path):
+    try:
+        reader = PdfReader(path)
+        text = ""
+        for p in reader.pages:
+            try:
+                t = p.extract_text()
+                if t:
+                    text += t + "\n"
+            except Exception:
+                continue
+        return text
+    except Exception:
+        return ""
+
+def read_pdf_pymupdf(path):
+    if not _HAS_PYMUPDF:
+        return ""
+    try:
+        doc = fitz.open(path)
+        text = ""
+        for page in doc:
+            try:
+                t = page.get_text()
+                if t:
+                    text += t + "\n"
+            except Exception:
+                continue
+        return text
+    except Exception:
+        return ""
+
+def read_pdf_text(path):
+    # try pypdf first
+    text = read_pdf_pypdf(path)
+    if text and text.strip():
+        return text
+    # fallback to pymupdf if available
+    if _HAS_PYMUPDF:
+        text = read_pdf_pymupdf(path)
+        if text and text.strip():
+            return text
+    return ""  # empty if cannot extract
 
         # ---------------- Embeddings & FAISS ----------------
         embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
@@ -91,6 +150,37 @@ if uploaded_file:
             "index": index,
             "chunks": chunks
         }
+def load_docs_from_folder(folder):
+    docs = []
+    for root, _, files in os.walk(folder):
+        for f in files:
+            if f.lower().endswith(".pdf"):
+                p = os.path.join(root, f)
+                text = read_pdf_text(p)
+                if text and text.strip():
+                    docs.append({"doc_id": f, "text": text})
+                else:
+                    st.warning(f"Unreadable or image-only PDF skipped: {f}")
+    return docs
+
+def split_documents(docs, chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP):
+    splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+    all_chunks = []
+    for doc in docs:
+        doc_id = doc.get("doc_id", "unknown")
+        text = doc.get("text", "")
+        if not text.strip():
+            continue
+        parts = splitter.split_text(text)
+        for i, p in enumerate(parts):
+            all_chunks.append({
+                "doc_id": doc_id,
+                "chunk_id": f"{Path(doc_id).stem}_chunk_{i}",
+                "text": p
+            })
+    return all_chunks
+
+
 
         # ---------------- User input ----------------
         query_topic = st.text_input("Enter topic/chapter (keyword) to generate questions:")
