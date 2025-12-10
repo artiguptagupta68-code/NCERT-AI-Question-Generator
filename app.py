@@ -90,33 +90,6 @@ def extract_zip(zip_path: str, extract_to: str):
                     # ignore nested extract failures
                     pass
 
-import streamlit as st
-import zipfile
-import os
-import shutil
-from pathlib import Path
-import numpy as np
-import torch
-import re
-import fitz  # PyMuPDF
-import faiss
-
-from pypdf import PdfReader
-from sentence_transformers import SentenceTransformer
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from transformers import AutoTokenizer, AutoModelForCausalLM
-
-# --------------------------------------------------------------------
-# STREAMLIT UI
-# --------------------------------------------------------------------
-st.set_page_config(page_title="📘 NCERT Question Generator (Offline)", layout="wide")
-st.title("📘 NCERT NCERT Question Generator (Offline, Transformer-based)")
-st.caption("RAG + Transformers | Creates competitive-exam quality questions.")
-
-CHUNK_SIZE = 800
-CHUNK_OVERLAP = 150
-
 # --------------------------------------------------------------------
 # PDF TEXT EXTRACTORS
 # --------------------------------------------------------------------
