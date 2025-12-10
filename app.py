@@ -238,19 +238,19 @@ else:
     generator = load_generator()
 
     def build_question_prompt(retrieved_chunks, topic, max_context_chars=3000):
-    ctx_parts = []
-    total = 0
-    for r in retrieved_chunks:
-        t = r["text"].strip()
-        if not t:
-            continue
-        remaining = max_context_chars - total
-        if remaining <= 0:
-            break
-        if len(t) > remaining:
-            t = t[:remaining]
-        ctx_parts.append(t)
-        total += len(t)
+        ctx_parts = []
+        total = 0
+        for r in retrieved_chunks:
+            t = r["text"].strip()
+            if not t:
+                continue
+                remaining = max_context_chars - total
+                if remaining <= 0:
+                    break
+                    if len(t) > remaining:
+                        t = t[:remaining]
+                        ctx_parts.append(t)
+                        total += len(t)
 
     context = "\n\n".join(ctx_parts)
 
