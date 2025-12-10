@@ -264,7 +264,7 @@ else:
         f"NCERT Context:\n{context}\n\n"
         "Generate clear, correct, exam-style questions:"
     )
-    return prompt
+        return prompt
 
 #step 8 Modify RAG to generate QUESTIONS
 
