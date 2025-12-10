@@ -90,149 +90,220 @@ def extract_zip(zip_path: str, extract_to: str):
                     # ignore nested extract failures
                     pass
 
-# ----------------------------
-# Read PDF text robustly
-# ----------------------------
+import streamlit as st
+import zipfile
+import os
+import shutil
+from pathlib import Path
+import numpy as np
+import torch
+import re
+import fitz  # PyMuPDF
+import faiss
+
+from pypdf import PdfReader
+from sentence_transformers import SentenceTransformer
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from transformers import AutoTokenizer, AutoModelForCausalLM
+
+# --------------------------------------------------------------------
+# STREAMLIT UI
+# --------------------------------------------------------------------
+st.set_page_config(page_title="📘 NCERT Question Generator (Offline)", layout="wide")
+st.title("📘 NCERT NCERT Question Generator (Offline, Transformer-based)")
+st.caption("RAG + Transformers | Creates competitive-exam quality questions.")
+
+CHUNK_SIZE = 800
+CHUNK_OVERLAP = 150
+
+# --------------------------------------------------------------------
+# PDF TEXT EXTRACTORS
+# --------------------------------------------------------------------
 def read_pdf_pypdf(path):
     try:
         reader = PdfReader(path)
         text = ""
-        for p in reader.pages:
-            try:
-                t = p.extract_text()
-                if t:
-                    text += t + "\n"
-            except Exception:
-                continue
+        for page in reader.pages:
+            t = page.extract_text()
+            if t:
+                text += t + "\n"
         return text
-    except Exception:
+    except:
         return ""
 
 def read_pdf_pymupdf(path):
-    if not _HAS_PYMUPDF:
-        return ""
     try:
         doc = fitz.open(path)
         text = ""
         for page in doc:
-            try:
-                t = page.get_text()
-                if t:
-                    text += t + "\n"
-            except Exception:
-                continue
+            t = page.get_text()
+            if t:
+                text += t + "\n"
         return text
-    except Exception:
+    except:
         return ""
 
 def read_pdf_text(path):
-    # try pypdf first
-    text = read_pdf_pypdf(path)
-    if text and text.strip():
-        return text
-    # fallback to pymupdf if available
-    if _HAS_PYMUPDF:
-        text = read_pdf_pymupdf(path)
-        if text and text.strip():
-            return text
-    return ""  # empty if cannot extract
+    txt = read_pdf_pypdf(path)
+    if txt.strip():
+        return txt
+    return read_pdf_pymupdf(path)
 
-        # ---------------- Embeddings & FAISS ----------------
-embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-embeddings = embedding_model.embed_documents(chunks)
-
-embedding_dim = len(embeddings[0])
-index = faiss.IndexFlatL2(embedding_dim)
-embedding_matrix = np.array(embeddings).astype("float32")
-index.add(embedding_matrix)
-
-faiss_index = {
-    "index": index,
-    "chunks": chunks
-}
-def load_docs_from_folder(folder):
+# --------------------------------------------------------------------
+# LOAD PDFS
+# --------------------------------------------------------------------
+def load_docs(folder):
     docs = []
     for root, _, files in os.walk(folder):
         for f in files:
             if f.lower().endswith(".pdf"):
-                p = os.path.join(root, f)
-                text = read_pdf_text(p)
-                if text and text.strip():
+                pdf_path = os.path.join(root, f)
+                text = read_pdf_text(pdf_path)
+                if text.strip():
                     docs.append({"doc_id": f, "text": text})
                 else:
-                    st.warning(f"Unreadable or image-only PDF skipped: {f}")
+                    st.warning(f"Unreadable PDF skipped: {f}")
     return docs
 
-def split_documents(docs, chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP):
-    splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-    all_chunks = []
+# --------------------------------------------------------------------
+# CHUNKING
+# --------------------------------------------------------------------
+def split_docs(docs):
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=CHUNK_SIZE,
+        chunk_overlap=CHUNK_OVERLAP
+    )
+    chunks = []
     for doc in docs:
-        doc_id = doc.get("doc_id", "unknown")
-        text = doc.get("text", "")
-        if not text.strip():
-            continue
-        parts = splitter.split_text(text)
+        parts = splitter.split_text(doc["text"])
         for i, p in enumerate(parts):
-            all_chunks.append({
-                "doc_id": doc_id,
-                "chunk_id": f"{Path(doc_id).stem}_chunk_{i}",
+            chunks.append({
+                "doc_id": doc["doc_id"],
+                "chunk_id": f"{doc['doc_id']}_chunk_{i}",
                 "text": p
             })
-    return all_chunks
+    return chunks
 
+# --------------------------------------------------------------------
+# FILE UPLOAD
+# --------------------------------------------------------------------
+st.subheader("Upload NCERT ZIP")
+uploaded_zip = st.file_uploader("Upload NCERT PDFs (ZIP)", type=["zip"])
 
+if uploaded_zip:
+    with open("ncert.zip", "wb") as f:
+        f.write(uploaded_zip.read())
 
-        # ---------------- User input ----------------
-        query_topic = st.text_input("Enter topic/chapter (keyword) to generate questions:")
+    EXTRACT_DIR = "ncert_data"
+    shutil.rmtree(EXTRACT_DIR, ignore_errors=True)
 
-        if st.button("Generate Questions"):
-            if not query_topic.strip():
-                st.warning("Enter a topic keyword.")
-            else:
-                # Retrieve top K relevant chunks
-                model_embed = SentenceTransformer("all-MiniLM-L6-v2")
-                query_embedding = model_embed.encode([query_topic], convert_to_numpy=True)
-                D, I = index.search(query_embedding.astype("float32"), k=min(5, len(chunks)))
-                retrieved_chunks = [chunks[i] for i in I[0]]
-                context = "\n\n".join(retrieved_chunks)
+    with zipfile.ZipFile("ncert.zip", "r") as z:
+        z.extractall(EXTRACT_DIR)
 
-                # ---------------- Transformer-based offline question generator ----------------
-                # CPU-friendly model
-                llm_model_name = "facebook/opt-125m"
-                tokenizer = AutoTokenizer.from_pretrained(llm_model_name)
-                llm_model = AutoModelForCausalLM.from_pretrained(llm_model_name)
-                llm_model.to("cpu")
+    # load all PDFs
+    docs = load_docs(EXTRACT_DIR)
+    st.success(f"Loaded {len(docs)} PDFs")
 
-                # Build prompt for multiple questions
-                prompt = f"""
-You are an expert NCERT question setter.
+    # split
+    chunks = split_docs(docs)
 
-Topic: {query_topic}
+    # ----------------------------------------------------------------
+    # EMBEDDINGS + FAISS INDEX
+    # ----------------------------------------------------------------
+    st.info("Embedding chunks...")
 
-Based on the context below, generate {num_q} NCERT-style questions (1-mark, 2-mark, 5-mark mixed). 
-Each question must start with an interrogative or command verb and end with '?'
+    embedder = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    embeddings = embedder.embed_documents([c["text"] for c in chunks])
+    embedding_dim = len(embeddings[0])
+
+    index = faiss.IndexFlatL2(embedding_dim)
+    index.add(np.array(embeddings, dtype="float32"))
+
+    st.success("FAISS index built.")
+
+    # ----------------------------------------------------------------
+    # QUESTION GENERATION SECTION
+    # ----------------------------------------------------------------
+    st.subheader("Generate Questions")
+
+    topic = st.text_input("Enter topic/chapter keyword:")
+    num_q = st.number_input("How many questions?", 1, 20, 5)
+
+    if st.button("Generate Questions"):
+        if not topic.strip():
+            st.warning("Enter a topic / chapter name.")
+        else:
+            # Retrieve relevant chunks
+            model_embed = SentenceTransformer("all-MiniLM-L6-v2")
+            q_emb = model_embed.encode([topic], convert_to_numpy=True)
+            D, I = index.search(q_emb.astype("float32"), k=min(5, len(chunks)))
+
+            context = "\n\n".join(chunks[i]["text"] for i in I[0])
+
+            # ------------------------------------------------------------
+            # LOAD OFFLINE TRANSFORMER MODEL
+            # ------------------------------------------------------------
+            gen_model_name = "facebook/opt-125m"
+            tokenizer = AutoTokenizer.from_pretrained(gen_model_name)
+            model = AutoModelForCausalLM.from_pretrained(gen_model_name)
+            model.to("cpu")
+
+            # ------------------------------------------------------------
+            # PROMPT FOR HIGH-QUALITY COMPETITIVE QUESTIONS
+            # ------------------------------------------------------------
+            prompt = f"""
+You are an expert NCERT teacher and UPSC-grade question maker.
+
+Generate {num_q} **high-quality, complete, competitive-exam style questions** 
+from the topic: **{topic}**
+
+Rules for the questions:
+- Must start with an interrogative word (What, Why, How, Explain, Describe…)
+- Must end with a **question mark**
+- Must be meaningful, complete and based ONLY on the context
+- Level: Competitive exam (UPSC, State PSC, CBSE Boards)
 
 Context:
 {context}
+
+Now generate the questions:
 """
-                inputs = tokenizer(prompt, return_tensors="pt", truncation=True)
-                with torch.no_grad():
-                    outputs = llm_model.generate(
-                        **inputs,
-                        max_new_tokens=600,
-                        temperature=0.25,
-                        do_sample=True
-                    )
-                result_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-                # ---------------- Clean & format questions ----------------
-                lines = [ln.strip() for ln in result_text.splitlines() if ln.strip()]
-                questions = []
-                for ln in lines:
-                    if re.match(r'^\d+\.\s+', ln) and not ln.endswith('?'):
-                        ln = ln.rstrip(' .') + '?'
-                    questions.append(ln)
+            inputs = tokenizer(prompt, return_tensors="pt", truncation=True)
+            with torch.no_grad():
+                output = model.generate(
+                    **inputs,
+                    max_new_tokens=500,
+                    temperature=0.4,
+                    do_sample=True,
+                )
 
-                st.subheader("Generated Questions:")
-                for q in questions:
-                    st.write(q)
+            raw = tokenizer.decode(output[0], skip_special_tokens=True)
+
+            # ------------------------------------------------------------
+            # EXTRACT CLEAN QUESTIONS
+            # ------------------------------------------------------------
+            lines = raw.split("\n")
+            final_q = []
+
+            for ln in lines:
+                ln = ln.strip()
+                if len(ln.split()) < 4:
+                    continue
+
+                if re.match(r"^(What|Why|How|Explain|Describe|Discuss|Define|Evaluate|Examine|Analyze)\b", ln, re.I):
+                    if not ln.endswith("?"):
+                        ln += "?"
+                    final_q.append(ln)
+
+            # Limit to required count
+            final_q = final_q[:num_q]
+
+            # ------------------------------------------------------------
+            # DISPLAY
+            # ------------------------------------------------------------
+            st.subheader("Generated Questions")
+            for i, q in enumerate(final_q, 1):
+                st.write(f"**{i}. {q}**")
+
