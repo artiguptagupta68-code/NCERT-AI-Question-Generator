@@ -54,6 +54,87 @@ TOP_K = 4
 st.set_page_config(page_title="NCERT AI Question Generator", layout="wide")
 st.title("📘 NCERT AI Question Generator")
 st.caption("Generates NCERT-style subjective questions from topic/chapter (RAG + Transformers)")
+ ----------------------------
+# Utilities: download, unzip, nested zips
+# ----------------------------
+def download_zip_from_drive(file_id: str, out_path: str) -> bool:
+    if os.path.exists(out_path):
+        return True
+    try:
+        url = f"https://drive.google.com/uc?id={file_id}"
+        gdown.download(url, out_path, quiet=False)
+        return os.path.exists(out_path)
+    except Exception as e:
+        st.warning(f"Download failed: {e}")
+        return False
+
+def extract_zip(zip_path: str, extract_to: str):
+    if not os.path.exists(zip_path):
+        raise FileNotFoundError(zip_path)
+    shutil.rmtree(extract_to, ignore_errors=True)
+    os.makedirs(extract_to, exist_ok=True)
+    with zipfile.ZipFile(zip_path, "r") as z:
+        z.extractall(extract_to)
+    # handle nested zips
+    for root, _, files in os.walk(extract_to):
+        for f in files:
+            if f.lower().endswith(".zip"):
+                nested = os.path.join(root, f)
+                nested_dir = os.path.join(root, Path(f).stem)
+                os.makedirs(nested_dir, exist_ok=True)
+                try:
+                    with zipfile.ZipFile(nested, "r") as nz:
+                        nz.extractall(nested_dir)
+                except Exception:
+                    # ignore nested extract failures
+                    pass
+
+# ----------------------------
+# Read PDF text robustly
+# ----------------------------
+def read_pdf_pypdf(path):
+    try:
+        reader = PdfReader(path)
+        text = ""
+        for p in reader.pages:
+            try:
+                t = p.extract_text()
+                if t:
+                    text += t + "\n"
+            except Exception:
+                continue
+        return text
+    except Exception:
+        return ""
+
+def read_pdf_pymupdf(path):
+    if not _HAS_PYMUPDF:
+        return ""
+    try:
+        doc = fitz.open(path)
+        text = ""
+        for page in doc:
+            try:
+                t = page.get_text()
+                if t:
+                    text += t + "\n"
+            except Exception:
+                continue
+        return text
+    except Exception:
+        return ""
+
+def read_pdf_text(path):
+    # try pypdf first
+    text = read_pdf_pypdf(path)
+    if text and text.strip():
+        return text
+    # fallback to pymupdf if available
+    if _HAS_PYMUPDF:
+        text = read_pdf_pymupdf(path)
+        if text and text.strip():
+            return text
+    return ""  # empty if cannot extract
 
 # ----------------------------
 # Utilities: download, unzip, nested zips
