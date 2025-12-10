@@ -251,10 +251,8 @@ else:
                         t = t[:remaining]
                         ctx_parts.append(t)
                         total += len(t)
-
-    context = "\n\n".join(ctx_parts)
-
-    prompt = (
+context = "\n\n".join(ctx_parts)
+prompt = (
         "You are an expert NCERT question generator.\n"
         "Based ONLY on the following NCERT context, generate:\n"
         "- 3 Multiple Choice Questions (MCQ)\n"
@@ -263,8 +261,8 @@ else:
         f"Topic requested: {topic}\n\n"
         f"NCERT Context:\n{context}\n\n"
         "Generate clear, correct, exam-style questions:"
-    )
-      return prompt
+        )
+          return prompt
 
 #step 8 Modify RAG to generate QUESTIONS
 
