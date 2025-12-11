@@ -189,33 +189,50 @@ def retrieve_chunks(query, index, metadata, top_k=TOP_K):
 # ----------------------------
 # Generate N questions, one by one
 # ----------------------------
-def generate_n_questions(generator, topic, context_text, num_questions):
-    question_list = []
-    for i in range(num_questions):
-        prompt = (
-            f"You are an expert NCERT question setter.\n"
-            f"Based ONLY on the following NCERT context, generate 1 distinct question.\n"
-            f"Rules:\n"
-            f"- Start with interrogative words like What, Why, How, Explain, Describe, State, Define, Discuss, Examine, Evaluate.\n"
-            f"- End with a question mark '?'.\n"
-            f"- Do NOT invent facts; use only NCERT content.\n"
-            f"- Each question should be clear, complete, and exam-style.\n\n"
-            f"Topic: {topic}\n\n"
-            f"NCERT Context:\n{context_text}\n\n"
-            f"Question {i+1}:"
-        )
+def generate_n_distinct_questions(generator, topic, context_text, num_questions):
+    """
+    Generates exactly num_questions distinct questions based on context.
+    """
+    prompt = (
+        f"You are an expert NCERT question setter.\n"
+        f"Based ONLY on the following NCERT context, generate exactly {num_questions} distinct questions.\n"
+        f"Rules:\n"
+        f"- Start each question with interrogative words like What, Why, How, Explain, Describe, State, Define, Discuss, Examine, Evaluate.\n"
+        f"- End each question with a question mark '?'.\n"
+        f"- Do NOT repeat questions.\n"
+        f"- Do NOT invent facts; use only NCERT content.\n"
+        f"- Each question should be clear, complete, and exam-style.\n\n"
+        f"Topic: {topic}\n\n"
+        f"NCERT Context:\n{context_text}\n\n"
+        f"Format the questions as numbered list:\n"
+        f"1. ...\n2. ...\n3. ...\n"
+    )
 
-        try:
-            out = generator(prompt, max_length=150, do_sample=True, temperature=0.3)[0]["generated_text"]
-        except Exception:
-            out = ""
-        
-        match = re.search(r"(What|Why|How|Explain|Describe|State|Define|Discuss|Examine|Evaluate).*?\?", out, flags=re.IGNORECASE | re.DOTALL)
-        if match:
-            question_list.append(match.group().strip())
-        else:
-            question_list.append(f"Model could not generate question {i+1}.")
-    return question_list
+    try:
+        out = generator(prompt, max_length=800, do_sample=True, temperature=0.7)[0]["generated_text"]
+    except Exception:
+        out = ""
+
+    # Extract questions using regex (interrogative words + ?)
+    pattern = r"(What|Why|How|Explain|Describe|State|Define|Discuss|Examine|Evaluate).*?\?"
+    matches = re.findall(pattern, out, flags=re.IGNORECASE | re.DOTALL)
+
+    # Remove duplicates and keep only num_questions
+    final_questions = []
+    seen = set()
+    for q in matches:
+        q_clean = q.strip()
+        if q_clean not in seen:
+            final_questions.append(q_clean)
+            seen.add(q_clean)
+        if len(final_questions) >= num_questions:
+            break
+
+    # If still fewer questions than requested, fill with a notice
+    while len(final_questions) < num_questions:
+        final_questions.append("Model could not generate a distinct question. Try simplifying the topic or reducing the number.")
+
+    return final_questions
 
 # ----------------------------
 # Orchestration: NCERT Question Generation
