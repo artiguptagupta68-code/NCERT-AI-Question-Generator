@@ -212,9 +212,11 @@ def build_question_prompt(chunks, topic, max_context_chars=3000):
     return prompt
 
 # ----------------------------
-# Orchestration
 # ----------------------------
-# 1. Download and extract
+# Orchestration: NCERT Question Generation
+# ----------------------------
+
+# 1️⃣ Prepare NCERT content
 st.text("Preparing NCERT content...")
 ok = download_zip_from_drive(FILE_ID, ZIP_PATH)
 if not ok:
@@ -228,50 +230,68 @@ if not zipfile.is_zipfile(ZIP_PATH):
 extract_zip(ZIP_PATH, EXTRACT_DIR)
 st.success(f"NCERT ZIP extracted to: {EXTRACT_DIR}")
 
-# 2. Subject selection
-subject = st.selectbox("Select Subject", SUBJECTS)
+# 2️⃣ Subject selection
+subject = st.selectbox("Select Subject", SUBJECTS, key="subject_select")
 docs = load_docs_by_subject(EXTRACT_DIR, subject)
 st.info(f"Loaded {len(docs)} PDFs for {subject}")
 if not docs:
     st.warning(f"No readable PDFs found for {subject}.")
     st.stop()
 
-# 3. Chunking
+# 3️⃣ Chunking
 all_chunks = chunk_documents(docs)
 st.info(f"Total chunks created: {len(all_chunks)}")
 
-# 4. Build FAISS
+# 4️⃣ Build FAISS index
 embed_model, index, metadata = build_faiss_index(all_chunks)
 if index is None:
     st.error("Failed to build FAISS index.")
     st.stop()
 st.success("FAISS index ready.")
 
-# 5. Load generator
+# 5️⃣ Load generator
 generator = load_generator_pipeline()
 st.success("Generator model loaded.")
 
 # ----------------------------
-# UI: Generate n NCERT Questions
+# Helper: extract questions
+# ----------------------------
+import re
+def extract_questions_any_format(text, num_questions):
+    question_starts = r'(What|Why|How|Explain|Describe|State|Define|Discuss|Examine|Evaluate)'
+    pattern = rf'{question_starts}.*?\?'
+    matches = re.findall(pattern, text, flags=re.IGNORECASE | re.DOTALL)
+    seen = set()
+    final = []
+    for q in matches:
+        q_clean = q.strip()
+        if q_clean not in seen:
+            seen.add(q_clean)
+            final.append(q_clean)
+        if len(final) >= num_questions:
+            break
+    return final
+
+# ----------------------------
+# 6️⃣ User input: topic and number of questions
 # ----------------------------
 st.subheader("Generate NCERT Questions")
-topic = st.text_input("Enter chapter/topic (example: 'Constitution', 'Electricity'):")
-num_questions = st.number_input("Number of questions to generate", min_value=1, max_value=20, value=5)
+topic = st.text_input("Enter chapter/topic (example: 'Constitution', 'Electricity')", key="topic_input")
+num_questions = st.number_input("Number of questions to generate", min_value=1, max_value=20, value=5, key="num_questions_input")
 
-if st.button("Generate Questions"):
+# 7️⃣ Generate button
+if st.button("Generate Questions", key="generate_btn"):
     if not topic.strip():
         st.warning("Please enter a valid chapter/topic.")
     else:
-        with st.spinner("Retrieving relevant NCERT content..."):
-            retrieved = retrieve_chunks(topic, index, metadata, top_k=TOP_K)
-        if not retrieved:
-            st.warning("No relevant NCERT content found for this topic. Try a different keyword.")
+        # Retrieve relevant chunks
+        retrieved_chunks = retrieve_chunks(topic, index, metadata, top_k=TOP_K)
+        if not retrieved_chunks:
+            st.warning(f"No relevant NCERT content found for '{topic}' in {subject}.")
         else:
-            # Combine top-K chunks into context
-            context_parts = [r["text"][:1000] for r in retrieved]  # limit length for generation
-            context_text = "\n\n".join(context_parts)
-
-            # Build strict prompt to generate n questions
+            # Build prompt for generation
+            prompt_parts = [r["text"][:1000] for r in retrieved_chunks]
+            context_text = "\n\n".join(prompt_parts)
             prompt = (
                 f"You are an expert NCERT question setter.\n"
                 f"Based ONLY on the following NCERT context, generate exactly {num_questions} distinct questions.\n"
@@ -288,51 +308,19 @@ if st.button("Generate Questions"):
 
             with st.spinner("Generating questions..."):
                 try:
-                    out = generator(prompt, max_length=600, do_sample=False)[0]["generated_text"]
+                    out = generator(prompt, max_length=600, do_sample=True, temperature=0.3)[0]["generated_text"]
                 except Exception as e:
-                    st.error(f"Generation failed: {e}")
+                    st.error(f"Question generation failed: {e}")
                     out = ""
 
-           # ----------------------------
-
-
-# 3️⃣ Number of questions
-num_questions = st.number_input(
-    "Number of questions to generate",
-    min_value=1,
-    max_value=20,
-    value=5,
-    key="num_questions_input"
-)
-
-# 4️⃣ Generate button
-if st.button("Generate Questions", key="generate_btn"):
-    if not topic.strip():
-        st.warning("Please enter a chapter/topic.")
-    else:
-        # Retrieve relevant chunks for the chosen subject
-        retrieved_chunks = retrieve_chunks(topic, index, metadata, top_k=TOP_K)
-        if not retrieved_chunks:
-            st.warning(f"No relevant NCERT content found for '{topic}' in {subject}.")
-        else:
-            # Build prompt for generator
-            prompt = build_question_prompt(retrieved_chunks, topic, num_questions)
-            
-            # Generate questions
-            try:
-                out = generator(prompt, max_length=600, do_sample=True, temperature=0.3)[0]["generated_text"]
-            except Exception as e:
-                st.error(f"Question generation failed: {e}")
-                out = ""
-
-            # Extract individual questions (starting with question words, ending with '?')
+            # Extract individual questions
             final_questions = extract_questions_any_format(out, num_questions)
 
             if final_questions:
                 st.success(f"Generated {len(final_questions)} Questions")
                 for i, q in enumerate(final_questions, 1):
                     st.write(f"{i}. {q}")
-                
+
                 # Show sources used
                 st.write("### Sources used")
                 for r in retrieved_chunks:
