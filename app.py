@@ -119,6 +119,31 @@ def load_docs_by_subject(folder, subject_keyword):
                     if text.strip():
                         docs.append({"doc_id": f, "text": text})
     return docs
+    import re
+
+def clean_ncert_text(text):
+    # Remove copyright + reprint + publishing info
+    patterns = [
+        r"Reprint\s*\d{4}-\d{2}", 
+        r"ISBN[\s:0-9-]+",
+        r"NCERT[\s\S]{0,50}Publication",
+        r"Not for commercial use",
+        r"Government of India",
+        r"Publication Division",
+        r"©[\s\S]{0,30}",
+        r"[A-Za-z ]+ Rao",   # removes "Shweta Rao"
+        r"[A-Za-z ]+ Singh"  # removes editor names
+    ]
+
+    for p in patterns:
+        text = re.sub(p, "", text, flags=re.IGNORECASE)
+
+    # Remove excessive blank lines
+    text = re.sub(r"\n\s*\n", "\n", text)
+
+    return text.strip()
+context_text = clean_ncert_text(context_text)
+
 
 # ----------------------------
 # Chunking
@@ -203,33 +228,61 @@ def extract_questions(text, num_questions):
 def generate_n_distinct_questions(generator, topic, context_text, num_questions):
     questions = []
     attempts = 0
-    max_attempts = num_questions * 5
+    max_attempts = num_questions * 6
+
     while len(questions) < num_questions and attempts < max_attempts:
-        prompt = (
-            f"You are an expert NCERT question setter.\n"
-            f"Based ONLY on the following NCERT context, generate 1 distinct question about '{topic}'.\n"
-            f"Rules:\n"
-            f"- Start the question with interrogative words like What, Why, How, Explain, Describe, State, Define, Discuss, Examine, Evaluate.\n"
-            f"- End with a question mark '?'.\n"
-            f"- Do NOT use generic placeholders like 'the passage' or 'the text'; instead, refer to the topic directly.\n"
-            f"- Do NOT invent facts; use only NCERT content.\n\n"
-            f"Topic: {topic}\n\n"
-            f"NCERT Context:\n{context_text}\n\n"
-            f"Question:"
-        )
-        out = generator(prompt, max_length=150, do_sample=True, temperature=0.7, top_p=0.9)[0]["generated_text"]
+
+        prompt = f"""
+You are an expert NCERT question setter.
+
+Generate ONE meaningful question strictly based on the following NCERT context.
+
+### STRICT RULES
+- The question MUST be meaningfully based on *actual NCERT content*.
+- DO NOT use generic placeholders like “the passage” or “the text”.
+- DO NOT create fictional names, reprints, authors.
+- DO NOT ask vague questions like “What is the main idea?”
+- The question MUST relate to the topic: **{topic}**
+- Use only NCERT facts visible in the context.
+- The question MUST end with a question mark (?).
+
+### NCERT CONTEXT:
+{context_text}
+
+### Output:
+One meaningful question:
+"""
+
+        out = generator(
+            prompt,
+            max_length=200,
+            do_sample=True,
+            temperature=0.6,
+            top_p=0.9
+        )[0]["generated_text"]
+
         new_qs = extract_questions(out, 1)
-        if new_qs and new_qs[0] not in questions:
-            # Replace generic placeholders if any remain
-            cleaned = new_qs[0].replace("the passage", topic).replace("the text", topic)
-            questions.append(cleaned)
+
+        if new_qs:
+            q = new_qs[0]
+
+            # Remove accidental hallucinations again
+            bad_words = ["Reprint", "Shweta", "ISBN", "Publication", "Government of India"]
+            if any(bad in q for bad in bad_words):
+                attempts += 1
+                continue
+
+            if q not in questions and len(q.split()) > 4:  # reject one-word junk questions
+                questions.append(q)
+
         attempts += 1
 
+    # Fill missing
     while len(questions) < num_questions:
-        questions.append(
-            "Model could not generate a distinct question. Try simplifying the topic or reducing the number."
-        )
+        questions.append("Model could not generate a distinct question. Please reduce the number.")
+
     return questions
+
 
 # ----------------------------
 # Orchestration
