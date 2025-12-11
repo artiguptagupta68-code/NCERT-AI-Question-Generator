@@ -1,4 +1,4 @@
-# app.py
+6# app.py
 import os
 import zipfile
 import shutil
@@ -148,7 +148,7 @@ def clean_ncert_text(text):
 # ----------------------------
 # Chunking
 # ----------------------------
-@st.cache_data(show_spinner=False
+@st.cache_data(show_spinner=False)
 def chunk_documents(docs, chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP):
     all_chunks = []
     for doc in docs:
