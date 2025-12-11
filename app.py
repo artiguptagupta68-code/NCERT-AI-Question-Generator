@@ -294,20 +294,7 @@ if st.button("Generate Questions"):
                     out = ""
 
            # ----------------------------
-st.subheader("Generate NCERT Questions")
 
-# 1️⃣ Subject selection dropdown
-subject = st.selectbox(
-    "Select Subject",
-    ["Polity", "Sociology", "Psychology", "Business Studies", "Economics"],
-    key="subject_select"
-)
-
-# 2️⃣ Topic/chapter input
-topic = st.text_input(
-    "Enter chapter/topic (example: 'Constitution', 'Electricity'):",
-    key="topic_input"
-)
 
 # 3️⃣ Number of questions
 num_questions = st.number_input(
