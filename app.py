@@ -288,7 +288,8 @@ if st.button("Generate Questions", key="generate_btn"):
             st.warning(f"No relevant NCERT content found for '{topic}' in {subject}.")
         else:
             context_text = "\n\n".join([r["text"][:1000] for r in retrieved_chunks])
-            final_questions = generate_n_questions(generator, topic, context_text, num_questions)
+           final_questions = generate_n_distinct_questions(generator, topic, context_text, num_questions)
+)
 
             st.success(f"Generated {len(final_questions)} Questions")
             for i, q in enumerate(final_questions, 1):
