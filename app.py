@@ -3,6 +3,7 @@ import os
 import zipfile
 import shutil
 from pathlib import Path
+
 import streamlit as st
 import gdown
 import numpy as np
@@ -12,7 +13,7 @@ from pypdf import PdfReader
 try:
     import fitz  # PyMuPDF
     _HAS_PYMUPDF = True
-except Exception:
+except ImportError:
     _HAS_PYMUPDF = False
 
 from sentence_transformers import SentenceTransformer
@@ -23,22 +24,21 @@ from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
 # CONFIG
 # ----------------------------
 FILE_ID = "1gdiCsGOeIyaDlJ--9qon8VTya3dbjr6G"
-ZIP_PATH = "ncrt.zip"
+ZIP_PATH = "ncert.zip"
 EXTRACT_DIR = "ncert_extracted"
 CHUNK_SIZE = 800
 CHUNK_OVERLAP = 150
 EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
 GEN_MODEL_NAME = "google/flan-t5-base"
 TOP_K = 4
-
 SUBJECTS = ["Polity", "Sociology", "Psychology", "Business Studies", "Economics"]
 
 st.set_page_config(page_title="NCERT AI Question Generator", layout="wide")
 st.title("📘 NCERT AI Question Generator")
-st.caption("Generates NCERT-style subjective questions from topic/chapter (RAG + Transformers)")
+st.caption("Generate NCERT-style subjective questions from chapters (RAG + Transformers)")
 
 # ----------------------------
-# Utilities
+# Utilities: download, unzip
 # ----------------------------
 def download_zip_from_drive(file_id: str, out_path: str) -> bool:
     if os.path.exists(out_path):
@@ -79,12 +79,9 @@ def read_pdf_pypdf(path):
         reader = PdfReader(path)
         text = ""
         for p in reader.pages:
-            try:
-                t = p.extract_text()
-                if t:
-                    text += t + "\n"
-            except Exception:
-                continue
+            t = p.extract_text()
+            if t:
+                text += t + "\n"
         return text
     except Exception:
         return ""
@@ -96,80 +93,62 @@ def read_pdf_pymupdf(path):
         doc = fitz.open(path)
         text = ""
         for page in doc:
-            try:
-                t = page.get_text()
-                if t:
-                    text += t + "\n"
-            except Exception:
-                continue
+            t = page.get_text()
+            if t:
+                text += t + "\n"
         return text
     except Exception:
         return ""
 
 def read_pdf_text(path):
     text = read_pdf_pypdf(path)
-    if text and text.strip():
+    if text.strip():
         return text
-    if _HAS_PYMUPDF:
-        text = read_pdf_pymupdf(path)
-        if text and text.strip():
-            return text
-    return ""
+    return read_pdf_pymupdf(path)
 
 # ----------------------------
-# Text splitter
+# Load PDFs by subject
 # ----------------------------
-def simple_text_splitter(text, chunk_size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
-    words = text.split()
-    chunks = []
-    start = 0
-    while start < len(words):
-        end = min(start + chunk_size, len(words))
-        chunk = " ".join(words[start:end])
-        chunks.append(chunk)
-        start += chunk_size - overlap
-    return chunks
-
-# ----------------------------
-# Load and chunk documents
-# ----------------------------
-def load_docs_from_subject(folder, subject):
+def load_docs_by_subject(folder, subject_keyword):
+    subject_keyword = subject_keyword.lower()
     docs = []
-    subject_folder = os.path.join(folder, subject)
-    if not os.path.exists(subject_folder):
-        st.warning(f"No folder found for subject: {subject}")
-        return docs
-    for root, _, files in os.walk(subject_folder):
+    for root, _, files in os.walk(folder):
         for f in files:
             if f.lower().endswith(".pdf"):
-                p = os.path.join(root, f)
-                text = read_pdf_text(p)
-                if text and text.strip():
-                    docs.append({"doc_id": f, "text": text})
-                else:
-                    st.warning(f"Unreadable or image-only PDF skipped: {f}")
+                path_lower = Path(root).name.lower() + " " + f.lower()
+                if subject_keyword in path_lower:
+                    p = os.path.join(root, f)
+                    text = read_pdf_text(p)
+                    if text.strip():
+                        docs.append({"doc_id": f, "text": text})
+                    else:
+                        st.warning(f"Unreadable or image-only PDF skipped: {f}")
     return docs
 
-def split_documents(docs):
+# ----------------------------
+# Chunking
+# ----------------------------
+def chunk_documents(docs, chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP):
     all_chunks = []
     for doc in docs:
-        doc_id = doc.get("doc_id", "unknown")
-        text = doc.get("text", "")
-        if not text.strip():
-            continue
-        parts = simple_text_splitter(text)
-        for i, p in enumerate(parts):
+        text = doc["text"]
+        doc_id = doc["doc_id"]
+        start = 0
+        while start < len(text):
+            end = min(start + chunk_size, len(text))
+            chunk_text = text[start:end]
             all_chunks.append({
                 "doc_id": doc_id,
-                "chunk_id": f"{Path(doc_id).stem}_chunk_{i}",
-                "text": p
+                "chunk_id": f"{Path(doc_id).stem}_{start}",
+                "text": chunk_text
             })
+            start += chunk_size - chunk_overlap
     return all_chunks
 
 # ----------------------------
 # Embeddings + FAISS
 # ----------------------------
-@st.cache_resource(show_spinner=True)
+@st.cache_resource
 def build_faiss_index(chunks):
     if not chunks:
         return None, None, None
@@ -183,9 +162,9 @@ def build_faiss_index(chunks):
     return model, index, metadata
 
 # ----------------------------
-# Load generator
+# Generator pipeline
 # ----------------------------
-@st.cache_resource(show_spinner=True)
+@st.cache_resource
 def load_generator_pipeline():
     device = 0 if torch.cuda.is_available() else -1
     tokenizer = AutoTokenizer.from_pretrained(GEN_MODEL_NAME)
@@ -196,53 +175,50 @@ def load_generator_pipeline():
     return gen
 
 # ----------------------------
-# Retrieval & prompt
+# Retrieve top chunks
 # ----------------------------
-def retrieve_chunks(query, index, metadata, embed_model, top_k=TOP_K):
+def retrieve_chunks(query, index, metadata, top_k=TOP_K):
     if index is None or metadata is None:
         return []
     q_emb = embed_model.encode([query], convert_to_numpy=True).astype("float32")
     k = min(top_k, index.ntotal)
     D, I = index.search(q_emb, k)
-    res = []
-    for idx in I[0]:
-        if idx < len(metadata):
-            res.append(metadata[idx])
-    return res
+    results = [metadata[idx] for idx in I[0] if idx < len(metadata)]
+    return results
 
-def build_question_prompt(retrieved_chunks, topic, max_context_chars=3000):
-    ctx_parts = []
+# ----------------------------
+# Build prompt
+# ----------------------------
+def build_question_prompt(chunks, topic, max_context_chars=3000):
+    context_parts = []
     total = 0
-    for r in retrieved_chunks:
-        t = r.get("text", "").strip()
-        if not t:
-            continue
+    for r in chunks:
+        t = r["text"]
         remaining = max_context_chars - total
         if remaining <= 0:
             break
-        if len(t) > remaining:
-            t = t[:remaining]
-        ctx_parts.append(t)
+        t = t[:remaining]
+        context_parts.append(t)
         total += len(t)
-    context = "\n\n".join(ctx_parts)
+    context = "\n\n".join(context_parts)
     prompt = (
-        "You are an expert NCERT question generator.\n"
-        "Based ONLY on the following NCERT context, generate:\n"
-        "- 5 Long Subjective Questions\n"
-        "Each question MUST be at least 4-5 lines long, descriptive, and based fully on NCERT.\n\n"
+        f"You are an expert NCERT question generator.\n"
+        f"Based ONLY on the following NCERT context, generate 5 long subjective questions.\n"
+        f"Each question must be descriptive, exam-style, and based fully on NCERT.\n\n"
         f"Topic: {topic}\n\n"
         f"NCERT Context:\n{context}\n\n"
-        "Generate detailed exam-style subjective questions:"
+        f"Generate detailed exam-style subjective questions:"
     )
     return prompt
 
 # ----------------------------
-# App orchestration
+# Orchestration
 # ----------------------------
+# 1. Download and extract
 st.text("Preparing NCERT content...")
 ok = download_zip_from_drive(FILE_ID, ZIP_PATH)
 if not ok:
-    st.error("Failed to download ZIP from Google Drive. Upload ZIP manually.")
+    st.error("Failed to download NCERT ZIP. Upload manually or check FILE_ID.")
     st.stop()
 
 if not zipfile.is_zipfile(ZIP_PATH):
@@ -250,46 +226,49 @@ if not zipfile.is_zipfile(ZIP_PATH):
     st.stop()
 
 extract_zip(ZIP_PATH, EXTRACT_DIR)
-st.success(f"ZIP extracted to: {EXTRACT_DIR}")
+st.success(f"NCERT ZIP extracted to: {EXTRACT_DIR}")
 
-# ----------------------------
-# Subject selection
-# ----------------------------
+# 2. Subject selection
 subject = st.selectbox("Select Subject", SUBJECTS)
-if subject:
-    docs = load_docs_from_subject(EXTRACT_DIR, subject)
-    st.info(f"Loaded {len(docs)} PDFs for {subject}")
-    if not docs:
-        st.warning("No readable PDFs for this subject.")
-        st.stop()
-    all_chunks = split_documents(docs)
-    st.info(f"Total chunks created: {len(all_chunks)}")
-    embed_model, index, metadata = build_faiss_index(all_chunks)
-    generator = load_generator_pipeline()
-    st.success("Ready to generate questions.")
+docs = load_docs_by_subject(EXTRACT_DIR, subject)
+st.info(f"Loaded {len(docs)} PDFs for {subject}")
+if not docs:
+    st.warning(f"No readable PDFs found for {subject}.")
+    st.stop()
 
-# ----------------------------
-# Generate Question tab
-# ----------------------------
-st.subheader("Generate NCERT Subjective Questions")
-topic = st.text_input("Enter chapter name or topic:")
+# 3. Chunking
+all_chunks = chunk_documents(docs)
+st.info(f"Total chunks created: {len(all_chunks)}")
 
-if topic and index:
-    with st.spinner("Retrieving relevant NCERT text..."):
-        retrieved = retrieve_chunks(topic, index, metadata, embed_model, top_k=TOP_K)
-    if not retrieved:
+# 4. Build FAISS
+embed_model, index, metadata = build_faiss_index(all_chunks)
+if index is None:
+    st.error("Failed to build FAISS index.")
+    st.stop()
+st.success("FAISS index ready.")
+
+# 5. Load generator
+generator = load_generator_pipeline()
+st.success("Generator model loaded.")
+
+# 6. Generate Questions
+st.subheader("Generate Questions")
+topic = st.text_input("Enter chapter/topic (example: 'Constitution', 'Electricity'):")
+if st.button("Generate Questions") and topic.strip():
+    with st.spinner("Retrieving top chunks..."):
+        top_chunks = retrieve_chunks(topic, index, metadata)
+    if not top_chunks:
         st.warning("No relevant NCERT content found for this topic.")
     else:
-        with st.spinner("Generating questions..."):
-            prompt = build_question_prompt(retrieved, topic)
-            try:
-                out = generator(prompt, max_length=400, do_sample=False)[0]["generated_text"]
-            except Exception as e:
-                st.error(f"Generation failed: {e}")
-                out = ""
-        st.write("### Generated Long Subjective Questions")
+        prompt = build_question_prompt(top_chunks, topic)
+        try:
+            out = generator(prompt, max_length=400, do_sample=False)[0]["generated_text"]
+        except Exception as e:
+            st.error(f"Generation failed: {e}")
+            out = ""
+        st.markdown("### Generated Questions")
         st.write(out)
 
-        st.write("### Sources used")
-        for r in retrieved:
+        st.markdown("### Sources used")
+        for r in top_chunks:
             st.write(f"{r['doc_id']} — {r['chunk_id']}")
