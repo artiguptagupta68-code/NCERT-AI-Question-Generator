@@ -27,7 +27,8 @@ EXTRACT_DIR = "ncert_extracted"
 CHUNK_SIZE = 1200
 CHUNK_OVERLAP = 200
 EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
-GEN_MODEL_NAME = "google/flan-t5-large"
+ GEN_MODEL_NAME = "google/flan-t5-base"
+
 TOP_K = 4
 SUBJECTS = ["Polity", "Sociology", "Psychology", "Business Studies", "Economics"]
 
@@ -107,6 +108,7 @@ def read_pdf_text(path):
 # ----------------------------
 # Load PDFs by subject
 # ----------------------------
+@st.cache_data(show_spinner=False)
 def load_docs_by_subject(folder, subject_keyword):
     subject_keyword = subject_keyword.lower()
     docs = []
@@ -146,6 +148,7 @@ def clean_ncert_text(text):
 # ----------------------------
 # Chunking
 # ----------------------------
+@st.cache_data(show_spinner=False)3
 def chunk_documents(docs, chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP):
     all_chunks = []
     for doc in docs:
@@ -308,28 +311,4 @@ st.success("FAISS index ready.")
 generator = load_generator_pipeline()
 st.success("Generator model loaded.")
 
-st.subheader("Generate NCERT Questions")
-topic = st.text_input("Enter chapter/topic (example: 'Constitution', 'Electricity')")
-num_questions = st.number_input("Number of questions to generate", min_value=1, max_value=20, value=5)
-
-if st.button("Generate Questions"):
-    if not topic.strip():
-        st.warning("Please enter a valid chapter/topic.")
-    else:
-        retrieved_chunks = retrieve_chunks(topic, index, metadata, top_k=TOP_K)
-        if not retrieved_chunks:
-            st.warning(f"No relevant NCERT content found for '{topic}' in {subject}.")
-        else:
-            context_parts = [r["text"][:1200] for r in retrieved_chunks]
-            context_text = "\n\n".join(context_parts)
-            context_text = clean_ncert_text(context_text)
-
-            final_questions = generate_n_distinct_questions(generator, topic, context_text, num_questions)
-
-            st.success(f"Generated {len(final_questions)} Questions")
-            for i, q in enumerate(final_questions, 1):
-                st.write(f"{i}. {q}")
-
-            st.write("### Sources used")
-            for r in retrieved_chunks:
-                st.write(f"{r['doc_id']} — {r['chunk_id']}")
+@st.cache_data(show_spinner=False)
