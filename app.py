@@ -27,7 +27,7 @@ EXTRACT_DIR = "ncert_extracted"
 CHUNK_SIZE = 1200
 CHUNK_OVERLAP = 200
 EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
- GEN_MODEL_NAME = "google/flan-t5-base"
+GEN_MODEL_NAME = "google/flan-t5-base"
 
 TOP_K = 4
 SUBJECTS = ["Polity", "Sociology", "Psychology", "Business Studies", "Economics"]
