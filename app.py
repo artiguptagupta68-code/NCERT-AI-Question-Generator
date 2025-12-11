@@ -16,7 +16,7 @@ except Exception:
     _HAS_PYMUPDF = False
 
 from sentence_transformers import SentenceTransformer
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain.text_splitters import RecursiveCharacterTextSplitter
 import faiss
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
 
