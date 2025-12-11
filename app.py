@@ -190,32 +190,39 @@ def retrieve_chunks(query, index, metadata, top_k=TOP_K):
 # Generate N questions, one by one
 # ----------------------------
 def generate_n_distinct_questions(generator, topic, context_text, num_questions):
-    """
-    Generates exactly num_questions distinct questions based on context.
-    """
-    prompt = (
-        f"You are an expert NCERT question setter.\n"
-        f"Based ONLY on the following NCERT context, generate exactly {num_questions} distinct questions.\n"
-        f"Rules:\n"
-        f"- Start each question with interrogative words like What, Why, How, Explain, Describe, State, Define, Discuss, Examine, Evaluate.\n"
-        f"- End each question with a question mark '?'.\n"
-        f"- Do NOT repeat questions.\n"
-        f"- Do NOT invent facts; use only NCERT content.\n"
-        f"- Each question should be clear, complete, and exam-style.\n\n"
-        f"Topic: {topic}\n\n"
-        f"NCERT Context:\n{context_text}\n\n"
-        f"Format the questions as numbered list:\n"
-        f"1. ...\n2. ...\n3. ...\n"
-    )
+    questions = []
+    attempts = 0
+    max_attempts = num_questions * 3  # retry if duplicates
+    question_words = ["What", "Why", "How", "Explain", "Describe", "State", "Define", "Discuss", "Examine", "Evaluate"]
 
-    try:
-        out = generator(prompt, max_length=800, do_sample=True, temperature=0.7)[0]["generated_text"]
-    except Exception:
-        out = ""
+    while len(questions) < num_questions and attempts < max_attempts:
+        prompt = (
+            f"You are an expert NCERT question setter.\n"
+            f"Based ONLY on the following NCERT context, generate 1 distinct exam-style question.\n"
+            f"Rules:\n"
+            f"- Start the question with one of these words: {', '.join(question_words)}.\n"
+            f"- End with a question mark '?'.\n"
+            f"- Do not invent facts; use only the context.\n\n"
+            f"Topic: {topic}\n\n"
+            f"NCERT Context:\n{context_text}\n\n"
+            f"Generate exactly 1 clear, distinct question:"
+        )
+        try:
+            out = generator(prompt, max_length=150, do_sample=True, temperature=0.3)[0]["generated_text"]
+            # Clean and validate
+            q = out.strip().rstrip(".")
+            if any(q.lower() != existing.lower() for existing in questions) and any(q.startswith(w) for w in question_words) and q.endswith("?"):
+                questions.append(q)
+            else:
+                attempts += 1
+        except Exception:
+            attempts += 1
+            continue
+    # Fill remaining slots if failed
+    while len(questions) < num_questions:
+        questions.append("Model could not generate a distinct question. Try simplifying the topic or reducing the number.")
+    return questions
 
-    # Extract questions using regex (interrogative words + ?)
-    pattern = r"(What|Why|How|Explain|Describe|State|Define|Discuss|Examine|Evaluate).*?\?"
-    matches = re.findall(pattern, out, flags=re.IGNORECASE | re.DOTALL)
 
     # Remove duplicates and keep only num_questions
     final_questions = []
@@ -279,34 +286,25 @@ topic = st.text_input("Enter chapter/topic (example: 'Constitution', 'Electricit
 num_questions = st.number_input("Number of questions to generate", min_value=1, max_value=20, value=5, key="num_questions_input")
 
 # 7️⃣ Generate button
-# 7️⃣ Generate button
 if st.button("Generate Questions", key="generate_btn"):
     if not topic.strip():
         st.warning("Please enter a valid chapter/topic.")
     else:
-        # Retrieve relevant chunks
         retrieved_chunks = retrieve_chunks(topic, index, metadata, top_k=TOP_K)
         if not retrieved_chunks:
             st.warning(f"No relevant NCERT content found for '{topic}' in {subject}.")
         else:
-            # Build prompt context
             context_parts = [r["text"][:1000] for r in retrieved_chunks]
             context_text = "\n\n".join(context_parts)
 
-            # Generate distinct questions
             final_questions = generate_n_distinct_questions(generator, topic, context_text, num_questions)
 
             # Display questions
-            if final_questions:
-                st.success(f"Generated {len(final_questions)} Questions")
-                for i, q in enumerate(final_questions, 1):
-                    st.write(f"{i}. {q}")
+            st.success(f"Generated {len(final_questions)} Questions")
+            for i, q in enumerate(final_questions, 1):
+                st.write(f"{i}. {q}")
 
-                # Show sources used
-                st.write("### Sources used")
-                for r in retrieved_chunks:
-                    st.write(f"{r['doc_id']} — {r['chunk_id']}")
-            else:
-                st.warning("No questions could be generated. Try reducing number of questions or simplifying the topic.")
-
+            # Show sources used
+            st.write("### Sources used")
+            for r in retrieved_chunks:
                 st.write(f"{r['doc_id']} — {r['chunk_id']}")
