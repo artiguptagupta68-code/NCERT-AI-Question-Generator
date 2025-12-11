@@ -3,6 +3,7 @@ import os
 import zipfile
 import shutil
 from pathlib import Path
+import re
 
 import streamlit as st
 import gdown
@@ -38,7 +39,7 @@ st.title("📘 NCERT AI Question Generator")
 st.caption("Generate NCERT-style subjective questions from chapters (RAG + Transformers)")
 
 # ----------------------------
-# Utilities: download, unzip
+# Utilities: download and extract
 # ----------------------------
 def download_zip_from_drive(file_id: str, out_path: str) -> bool:
     if os.path.exists(out_path):
@@ -187,33 +188,29 @@ def retrieve_chunks(query, index, metadata, top_k=TOP_K):
     return results
 
 # ----------------------------
-# Build prompt
+# Extract questions robustly
 # ----------------------------
-def build_question_prompt(chunks, topic, max_context_chars=3000):
-    context_parts = []
-    total = 0
-    for r in chunks:
-        t = r["text"]
-        remaining = max_context_chars - total
-        if remaining <= 0:
+def extract_questions_any_format(text, num_questions):
+    """
+    Extract questions starting with interrogative words and ending with '?'
+    """
+    question_words = r'(What|Why|How|Explain|Describe|State|Define|Discuss|Examine|Evaluate)'
+    pattern = rf'{question_words}.*?\?'
+    matches = re.findall(pattern, text, flags=re.IGNORECASE | re.DOTALL)
+    # Remove duplicates and limit
+    seen = set()
+    final = []
+    for q in matches:
+        q_clean = q.strip()
+        if q_clean not in seen:
+            seen.add(q_clean)
+            final.append(q_clean)
+        if len(final) >= num_questions:
             break
-        t = t[:remaining]
-        context_parts.append(t)
-        total += len(t)
-    context = "\n\n".join(context_parts)
-    prompt = (
-        f"You are an expert NCERT question generator.\n"
-        f"Based ONLY on the following NCERT context, generate 5 long subjective questions.\n"
-        f"Each question must be descriptive, exam-style, and based fully on NCERT.\n\n"
-        f"Topic: {topic}\n\n"
-        f"NCERT Context:\n{context}\n\n"
-        f"Generate detailed exam-style subjective questions:"
-    )
-    return prompt
+    return final
 
 # ----------------------------
-# ----------------------------
-# Orchestration: NCERT Question Generation
+# Orchestration
 # ----------------------------
 
 # 1️⃣ Prepare NCERT content
@@ -253,45 +250,7 @@ st.success("FAISS index ready.")
 generator = load_generator_pipeline()
 st.success("Generator model loaded.")
 
-# ----------------------------
-# Helper: extract questions
-# ----------------------------
-import re
-# ----------------------------
-# Helper: extract questions
-# ----------------------------
-import re
-
-import re
-
-def extract_questions_any_format(text, num_questions):
-    """
-    Extracts questions from model output that start with interrogative words
-    and end with a question mark.
-    Returns a list of up to num_questions questions.
-    """
-    question_starts = r'(What|Why|How|Explain|Describe|State|Define|Discuss|Examine|Evaluate)'
-    # Match lines starting with interrogative words and ending with '?'
-    pattern = rf'{question_starts}.*?\?'
-    matches = re.findall(pattern, text, flags=re.IGNORECASE | re.DOTALL)
-
-    # Remove duplicates and limit to num_questions
-    seen = set()
-    final = []
-    for q in matches:
-        q_clean = q.strip()
-        if q_clean not in seen:
-            seen.add(q_clean)
-            final.append(q_clean)
-        if len(final) >= num_questions:
-            break
-    return final
-
-
-
-# ----------------------------
-# 6️⃣ User input: topic and number of questions
-# ----------------------------
+# 6️⃣ User input
 st.subheader("Generate NCERT Questions")
 topic = st.text_input("Enter chapter/topic (example: 'Constitution', 'Electricity')", key="topic_input")
 num_questions = st.number_input("Number of questions to generate", min_value=1, max_value=20, value=5, key="num_questions_input")
@@ -301,46 +260,40 @@ if st.button("Generate Questions", key="generate_btn"):
     if not topic.strip():
         st.warning("Please enter a valid chapter/topic.")
     else:
-        # Retrieve relevant chunks
         retrieved_chunks = retrieve_chunks(topic, index, metadata, top_k=TOP_K)
         if not retrieved_chunks:
             st.warning(f"No relevant NCERT content found for '{topic}' in {subject}.")
         else:
-            # Build prompt for generation
-            prompt_parts = [r["text"][:1000] for r in retrieved_chunks]
-            context_text = "\n\n".join(prompt_parts)
+            context_text = "\n\n".join([r["text"][:1200] for r in retrieved_chunks])
             prompt = (
                 f"You are an expert NCERT question setter.\n"
                 f"Based ONLY on the following NCERT context, generate exactly {num_questions} distinct questions.\n"
                 f"Rules:\n"
                 f"- Start each question with interrogative words like What, Why, How, Explain, Describe, State, Define, Discuss, Examine, Evaluate.\n"
                 f"- End each question with a question mark '?'.\n"
-                f"- Do NOT invent facts; use only NCERT content.\n"
+                f"- Use only NCERT content; do not invent facts.\n"
                 f"- Each question should be clear, complete, and exam-style.\n\n"
                 f"Topic: {topic}\n\n"
                 f"NCERT Context:\n{context_text}\n\n"
                 f"Generate exactly {num_questions} numbered questions in this format:\n"
-                f"1. ...\n2. ...\n3. ...\n"
+                f"1. ...\n2. ...\n"
             )
 
             with st.spinner("Generating questions..."):
                 try:
-                    out = generator(prompt, max_length=600, do_sample=True, temperature=0.3)[0]["generated_text"]
+                    out = generator(prompt, max_length=1500, do_sample=True, temperature=0.3)[0]["generated_text"]
                 except Exception as e:
                     st.error(f"Question generation failed: {e}")
                     out = ""
 
-            # Extract individual questions
             final_questions = extract_questions_any_format(out, num_questions)
-
             if final_questions:
                 st.success(f"Generated {len(final_questions)} Questions")
                 for i, q in enumerate(final_questions, 1):
                     st.write(f"{i}. {q}")
-
-                # Show sources used
+                # Show sources
                 st.write("### Sources used")
                 for r in retrieved_chunks:
                     st.write(f"{r['doc_id']} — {r['chunk_id']}")
             else:
-                st.warning("No questions could be extracted. Check the NCERT PDFs or try a different topic.")
+                st.warning("No questions could be extracted. Try a different topic or check NCERT PDFs.")
