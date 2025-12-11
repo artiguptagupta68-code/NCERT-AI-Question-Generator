@@ -1,10 +1,11 @@
-streamlit
+streamlit>=1.26
 numpy
 faiss-cpu
-torch
-transformers
-sentence-transformers
-langchain
-langchain-community
+torch>=2.1
+transformers>=4.34
+sentence-transformers>=2.2
+langchain>=0.2.2
+langchain-huggingface>=0.0.8
 pymupdf
 regex
+gdown
