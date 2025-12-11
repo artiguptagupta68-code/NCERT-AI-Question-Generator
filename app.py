@@ -184,7 +184,7 @@ def retrieve_chunks(query, index, metadata, top_k=TOP_K):
 # ----------------------------
 # Helper: generate distinct questions
 # ----------------------------
-QUESTION_START_WORDS = ["What", "Why", "How", "Explain", "Describe", "State", "Define", "Discuss", "Examine", "Evaluate"]
+QUESTION_START_WORDS = ["What", "Why", "How", "Explain", "Describe", "State", "Define", "Discuss", "Examine", "Evaluate,Tell"]
 
 def extract_questions(text, num_questions):
     pattern = r'(?:' + '|'.join(QUESTION_START_WORDS) + r').*?\?'
@@ -203,14 +203,15 @@ def extract_questions(text, num_questions):
 def generate_n_distinct_questions(generator, topic, context_text, num_questions):
     questions = []
     attempts = 0
-    max_attempts = num_questions * 5  # avoid infinite loop
+    max_attempts = num_questions * 5
     while len(questions) < num_questions and attempts < max_attempts:
         prompt = (
             f"You are an expert NCERT question setter.\n"
-            f"Based ONLY on the following NCERT context, generate 1 distinct question.\n"
+            f"Based ONLY on the following NCERT context, generate 1 distinct question about '{topic}'.\n"
             f"Rules:\n"
             f"- Start the question with interrogative words like What, Why, How, Explain, Describe, State, Define, Discuss, Examine, Evaluate.\n"
             f"- End with a question mark '?'.\n"
+            f"- Do NOT use generic placeholders like 'the passage' or 'the text'; instead, refer to the topic directly.\n"
             f"- Do NOT invent facts; use only NCERT content.\n\n"
             f"Topic: {topic}\n\n"
             f"NCERT Context:\n{context_text}\n\n"
@@ -219,11 +220,15 @@ def generate_n_distinct_questions(generator, topic, context_text, num_questions)
         out = generator(prompt, max_length=150, do_sample=True, temperature=0.7, top_p=0.9)[0]["generated_text"]
         new_qs = extract_questions(out, 1)
         if new_qs and new_qs[0] not in questions:
-            questions.append(new_qs[0])
+            # Replace generic placeholders if any remain
+            cleaned = new_qs[0].replace("the passage", topic).replace("the text", topic)
+            questions.append(cleaned)
         attempts += 1
-    # If could not generate enough distinct questions
+
     while len(questions) < num_questions:
-        questions.append("Model could not generate a distinct question. Try simplifying the topic or reducing the number.")
+        questions.append(
+            "Model could not generate a distinct question. Try simplifying the topic or reducing the number."
+        )
     return questions
 
 # ----------------------------
