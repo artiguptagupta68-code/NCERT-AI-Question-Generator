@@ -188,22 +188,35 @@ def retrieve_topk(index, embed_model, query: str, top_k: int = DEFAULT_TOP_K):
 # -----------------------
 @st.cache_resource
 @st.cache_resource
-def load_generator_model(model_name: str = GEN_MODEL_NAME):
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+def generate_questions(model, tokenizer, device, context):
+    prompt = f"""
+Create high-quality exam questions strictly based on the context.
 
-    # FIX pad token missing
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
+1-Mark Questions (definition/recall)
+2-Mark Questions (short explanation)
+5-Mark Questions (analytical)
 
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        device_map=None,
-        low_cpu_mem_usage=True
+Context:
+{context}
+
+Questions:
+"""
+
+    inputs = tokenizer(prompt, return_tensors="pt", padding=True).to(device)
+
+    outputs = model.generate(
+        inputs["input_ids"],
+        attention_mask=inputs["attention_mask"],
+        max_new_tokens=300,      # fixes truncation warning
+        do_sample=True,
+        top_p=0.9,
+        temperature=0.7,         # OK here
+        pad_token_id=tokenizer.eos_token_id,
     )
-    model.to(device)
-    model.eval()
-    return tokenizer, model, device
+
+    text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    return text
+
 
 # -----------------------
 # Prompt builder & postprocessing
