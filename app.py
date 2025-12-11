@@ -46,7 +46,7 @@ if uploaded_file:
 
     # -----------------------------------------------------------
     # 2. Load Documents
-    -----------------------------------------------------------
+
     def load_documents(folder):
         texts = []
         for root, dirs, files in os.walk(folder):
