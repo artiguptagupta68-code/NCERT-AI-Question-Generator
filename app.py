@@ -330,11 +330,11 @@ final_questions = extract_questions_any_format(out, num_questions)
             # ----------------------------
             # Display questions
             # ----------------------------
-            st.success(f"Generated {len(final_questions)} Questions")
-            for i, q in enumerate(final_questions, 1):
-                st.write(f"{i}. {q}")
+st.success(f"Generated {len(final_questions)} Questions")
+for i, q in enumerate(final_questions, 1):
+    st.write(f"{i}. {q}")
 
             # Show sources used
-            st.write("### Sources used")
-            for r in retrieved:
-                st.write(f"{r['doc_id']} — {r['chunk_id']}")
+st.write("### Sources used")
+for r in retrieved:
+    st.write(f"{r['doc_id']} — {r['chunk_id']}")
