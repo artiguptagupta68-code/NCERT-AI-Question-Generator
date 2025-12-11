@@ -9,3 +9,4 @@ langchain-huggingface>=0.0.8
 pymupdf
 regex
 gdown
+pypdf
