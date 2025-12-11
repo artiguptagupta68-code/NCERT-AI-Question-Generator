@@ -31,6 +31,8 @@ EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
 GEN_MODEL_NAME = "google/flan-t5-base"
 TOP_K = 4
 
+SUBJECTS = ["Polity", "Sociology", "Psychology", "Business Studies", "Economics"]
+
 st.set_page_config(page_title="NCERT AI Question Generator", layout="wide")
 st.title("📘 NCERT AI Question Generator")
 st.caption("Generates NCERT-style subjective questions from topic/chapter (RAG + Transformers)")
@@ -115,7 +117,7 @@ def read_pdf_text(path):
     return ""
 
 # ----------------------------
-# Text splitter (LangChain replacement)
+# Text splitter
 # ----------------------------
 def simple_text_splitter(text, chunk_size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
     words = text.split()
@@ -131,9 +133,13 @@ def simple_text_splitter(text, chunk_size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
 # ----------------------------
 # Load and chunk documents
 # ----------------------------
-def load_docs_from_folder(folder):
+def load_docs_from_subject(folder, subject):
     docs = []
-    for root, _, files in os.walk(folder):
+    subject_folder = os.path.join(folder, subject)
+    if not os.path.exists(subject_folder):
+        st.warning(f"No folder found for subject: {subject}")
+        return docs
+    for root, _, files in os.walk(subject_folder):
         for f in files:
             if f.lower().endswith(".pdf"):
                 p = os.path.join(root, f)
@@ -231,7 +237,7 @@ def build_question_prompt(retrieved_chunks, topic, max_context_chars=3000):
     return prompt
 
 # ----------------------------
-# Orchestration
+# App orchestration
 # ----------------------------
 st.text("Preparing NCERT content...")
 ok = download_zip_from_drive(FILE_ID, ZIP_PATH)
@@ -246,36 +252,33 @@ if not zipfile.is_zipfile(ZIP_PATH):
 extract_zip(ZIP_PATH, EXTRACT_DIR)
 st.success(f"ZIP extracted to: {EXTRACT_DIR}")
 
-docs = load_docs_from_folder(EXTRACT_DIR)
-st.info(f"Loaded {len(docs)} readable PDF documents.")
-if not docs:
-    st.error("No readable PDF text found.")
-    st.stop()
-
-all_chunks = split_documents(docs)
-st.info(f"Total chunks created: {len(all_chunks)}")
-st.session_state['all_chunks'] = all_chunks
-
-embed_model, index, metadata = build_faiss_index(all_chunks)
-if index is None:
-    st.error("Failed to build FAISS index.")
-    st.stop()
-st.success("FAISS index built.")
-
-generator = load_generator_pipeline()
-st.success("Generator model loaded.")
+# ----------------------------
+# Subject selection
+# ----------------------------
+subject = st.selectbox("Select Subject", SUBJECTS)
+if subject:
+    docs = load_docs_from_subject(EXTRACT_DIR, subject)
+    st.info(f"Loaded {len(docs)} PDFs for {subject}")
+    if not docs:
+        st.warning("No readable PDFs for this subject.")
+        st.stop()
+    all_chunks = split_documents(docs)
+    st.info(f"Total chunks created: {len(all_chunks)}")
+    embed_model, index, metadata = build_faiss_index(all_chunks)
+    generator = load_generator_pipeline()
+    st.success("Ready to generate questions.")
 
 # ----------------------------
-# UI: Topic input
+# Generate Question tab
 # ----------------------------
 st.subheader("Generate NCERT Subjective Questions")
 topic = st.text_input("Enter chapter name or topic:")
 
-if topic:
+if topic and index:
     with st.spinner("Retrieving relevant NCERT text..."):
         retrieved = retrieve_chunks(topic, index, metadata, embed_model, top_k=TOP_K)
     if not retrieved:
-        st.warning("No relevant NCERT content found.")
+        st.warning("No relevant NCERT content found for this topic.")
     else:
         with st.spinner("Generating questions..."):
             prompt = build_question_prompt(retrieved, topic)
