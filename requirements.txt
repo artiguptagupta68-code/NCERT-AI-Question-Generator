@@ -1,13 +1,10 @@
 streamlit
 numpy
+faiss-cpu
 torch
 transformers
 sentence-transformers
 langchain
 langchain-community
-faiss-cpu
-PyMuPDF
-pypdf
-gdown
-PyPDF2
-peft
+pymupdf
+regex
