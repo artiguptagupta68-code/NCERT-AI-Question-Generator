@@ -1,11 +1,18 @@
-streamlit
-numpy
-faiss-cpu
-torch
-transformers
-sentence-transformers
-langchain
-pymupdf
-regex
-gdown
-pypdf
+# Core
+streamlit>=1.29.0,<2.0
+numpy>=1.26.0,<1.27
+torch>=2.1.0,<2.2
+transformers>=4.37.0,<5.0
+sentence-transformers>=2.2.0,<3.0
+
+# PDF processing
+pypdf>=3.21.0,<4.0
+PyMuPDF>=1.23.0,<2.0
+
+# RAG / Embeddings
+faiss-cpu>=1.7.4,<2.0
+langchain>=0.1.208,<0.2
+langchain-huggingface>=0.0.15,<0.1
+
+# Utilities
+gdown>=4.7.0,<5.0
