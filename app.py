@@ -231,8 +231,8 @@ def generate_n_distinct_questions(generator, topic, context_text, num_questions)
     # If still fewer questions than requested, fill with a notice
     while len(final_questions) < num_questions:
         final_questions.append("Model could not generate a distinct question. Try simplifying the topic or reducing the number.")
-
-    return final_questions
+        
+        return final_questions
 
 # ----------------------------
 # Orchestration: NCERT Question Generation
