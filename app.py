@@ -311,4 +311,4 @@ st.success("FAISS index ready.")
 generator = load_generator_pipeline()
 st.success("Generator model loaded.")
 
-@st.cache_data(show_spinner=False)
+*
