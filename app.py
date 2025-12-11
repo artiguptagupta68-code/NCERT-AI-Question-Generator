@@ -331,27 +331,50 @@ generator = load_generator_pipeline()
 st.success("Generator model loaded.")
 
 # User input
+# UI: Generate NCERT Questions
 st.subheader("Generate NCERT Questions")
-topic = st.text_input("Enter chapter/topic (example: 'Constitution', 'Electricity')", key="topic_input")
-num_questions = st.number_input("Number of questions to generate", min_value=1, max_value=20, value=5, key="num_questions_input")
 
-if st.button("Generate Questions", key="generate_btn"):
+topic = st.text_input(
+    "Enter chapter/topic (example: 'Constitution', 'Electricity')",
+    key="topic_input"
+)
+
+num_questions = st.number_input(
+    "Number of questions to generate",
+    min_value=1, max_value=20, value=5,
+    key="num_questions_input"
+)
+
+if st.button("Generate Questions", key="generate_button"):
     if not topic.strip():
         st.warning("Please enter a valid chapter/topic.")
     else:
+        # Retrieve chunks
         retrieved_chunks = retrieve_chunks(topic, index, metadata, top_k=TOP_K)
+
         if not retrieved_chunks:
             st.warning(f"No relevant NCERT content found for '{topic}' in {subject}.")
         else:
-            context_parts = [r["text"][:2000] for r in retrieved_chunks]
+            # Build context
+            context_parts = [r["text"][:1200] for r in retrieved_chunks]
             context_text = "\n\n".join(context_parts)
 
-            final_questions = generate_n_distinct_questions(generator, topic, context_text, num_questions)
+            # Clean NCERT metadata
+            context_text = clean_ncert_text(context_text)
 
-            st.success(f"Generated {len(final_questions)} Questions")
-            for i, q in enumerate(final_questions, 1):
-                st.write(f"{i}. {q}")
+            # Generate n questions
+            final_questions = generate_n_distinct_questions(
+                generator, topic, context_text, num_questions
+            )
 
-            st.write("### Sources used")
-            for r in retrieved_chunks:
-                st.write(f"{r['doc_id']} — {r['chunk_id']}")
+            if final_questions:
+                st.success(f"Generated {len(final_questions)} Questions")
+                for i, q in enumerate(final_questions, 1):
+                    st.write(f"{i}. {q}")
+                
+                st.write("### Sources used")
+                for r in retrieved_chunks:
+                    st.write(f"{r['doc_id']} — {r['chunk_id']}")
+
+            else:
+                st.warning("Model could not generate questions. Try reducing number or changing topic.")
