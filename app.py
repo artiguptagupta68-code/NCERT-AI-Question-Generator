@@ -32,7 +32,8 @@ SUBJECTS = ["Economics", "Polity", "Business Studies", "Psychology", "Sociology"
 DEFAULT_TOP_K = 6
 
 # Transformer generator (offline). Use a CPU-friendly model if GPU not available.
-GEN_MODEL_NAME = os.getenv("GEN_MODEL_NAME", "facebook/opt-125m")
+GEN_MODEL_NAME = GEN_MODEL_NAME = os.getenv("GEN_MODEL_NAME", "gpt2-medium")
+
 
 # UI
 st.set_page_config(page_title="NCERT → UPSC Question Generator (Offline)", layout="wide")
@@ -186,11 +187,20 @@ def retrieve_topk(index, embed_model, query: str, top_k: int = DEFAULT_TOP_K):
 # Generator loading (transformer, offline)
 # -----------------------
 @st.cache_resource
+@st.cache_resource
 def load_generator_model(model_name: str = GEN_MODEL_NAME):
-    # CPU fallback if GPU not available
     device = "cuda" if torch.cuda.is_available() else "cpu"
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForCausalLM.from_pretrained(model_name, device_map=None, low_cpu_mem_usage=True)
+
+    # FIX pad token missing
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        device_map=None,
+        low_cpu_mem_usage=True
+    )
     model.to(device)
     model.eval()
     return tokenizer, model, device
