@@ -296,21 +296,36 @@ if st.button("Generate Questions"):
             # ----------------------------
             # Postprocess generated text
             # ----------------------------
-            import re
-            def extract_questions(text, num_questions):
-                # Split by numbered pattern 1. 2. 3.
-                lines = re.split(r'\n\d+\.\s*', text)
-                questions = []
-                for l in lines[1:]:  # first split is empty before '1.'
-                    q = l.strip()
-                    if not q.endswith("?"):
-                        q = q.rstrip(".!?") + "?"
-                    questions.append(q)
-                    if len(questions) >= num_questions:
-                        break
-                return questions
+            # ----------------------------
+# Postprocess generated text to extract n questions robustly
+# ----------------------------
+import re
 
-            final_questions = extract_questions(out, num_questions)
+def extract_questions_any_format(text, num_questions):
+    """
+    Extracts up to `num_questions` from model output.
+    Looks for sentences starting with interrogative words or command and ending with '?'
+    """
+    interrogatives = r"^(What|Why|How|Explain|Describe|State|Define|Discuss|Examine|Evaluate)"
+    # Split by line breaks or '.', '!', '?' to catch sentences
+    sentences = re.split(r'[.!?\n]', text)
+    questions = []
+    for s in sentences:
+        s = s.strip()
+        if not s:
+            continue
+        # prepend '?' if missing (for safe measure)
+        if not s.endswith("?"):
+            s = s.rstrip(".!?") + "?"
+        # check if starts with interrogative
+        if re.match(interrogatives, s, flags=re.I):
+            questions.append(s)
+        if len(questions) >= num_questions:
+            break
+    return questions
+
+# usage:
+final_questions = extract_questions_any_format(out, num_questions)
 
             # ----------------------------
             # Display questions
