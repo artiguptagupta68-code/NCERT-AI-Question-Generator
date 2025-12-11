@@ -79,14 +79,14 @@ if uploaded_file:
 
     # -----------------------------------------------------------
     # 3. Split into chunks
-    -----------------------------------------------------------
+    
     splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     chunks = splitter.split_text(" ".join(docs))
 
 
     # -----------------------------------------------------------
     # 4. Embeddings + FAISS
-    -----------------------------------------------------------
+   
     embedder = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
     emb = embedder.embed_documents(chunks)
 
@@ -97,7 +97,7 @@ if uploaded_file:
 
     # -----------------------------------------------------------
     # 5. Query Input
-    -----------------------------------------------------------
+  
     query = st.text_input("Enter a topic or question to generate UPSC-style questions:")
 
     if query:
@@ -111,7 +111,7 @@ if uploaded_file:
 
         # -----------------------------------------------------------
         # 6. Load OPT-125M model (offline, CPU-friendly)
-        -----------------------------------------------------------
+       
         @st.cache_resource
         def load_opt():
             tok = AutoTokenizer.from_pretrained("facebook/opt-125m")
@@ -130,7 +130,7 @@ if uploaded_file:
 
         # -----------------------------------------------------------
         # 7. Build strict UPSC generation prompt
-        -----------------------------------------------------------
+       
         context = "\n\n".join(retrieved)
 
         prompt = f"""
@@ -165,7 +165,7 @@ Rules:
 
         # -----------------------------------------------------------
         # 8. Generate raw output
-        -----------------------------------------------------------
+      
         inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=2048).to(device)
 
         with torch.no_grad():
@@ -183,7 +183,7 @@ Rules:
 
         # -----------------------------------------------------------
         # 9. Extract questions cleanly
-        -----------------------------------------------------------
+       
         def extract_questions(text):
             lines = [l.strip() for l in text.split("\n") if l.strip()]
             qs = []
@@ -227,7 +227,7 @@ Rules:
 
         # -----------------------------------------------------------
         # 10. Display questions formatted
-        -----------------------------------------------------------
+    
         st.subheader("1-Mark Questions")
         for q in questions[:2]:
             st.write("• " + q)
