@@ -29,7 +29,9 @@ EXTRACT_DIR = "ncert_extracted"
 CHUNK_SIZE = 1200
 CHUNK_OVERLAP = 200
 EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
-GEN_MODEL_NAME = "google/flan-t5-large"
+
+GEN_MODEL_NAME = "google/flan-t5-base"
+
 TOP_K = 4
 SUBJECTS = ["Polity", "Sociology", "Psychology", "Business Studies", "Economics"]
 
@@ -251,12 +253,15 @@ One UPSC-style question.
         json.dump(reference_questions, f, indent=2, ensure_ascii=False)
     return path
 
+# 3️⃣ Limit reference questions generation
 def load_upsc_reference(subject):
-    path = f"upsc_reference/{subject.replace(' ','_')}_questions.json"
+    path = f"/tmp/upsc_reference/{subject.replace(' ','_')}_questions.json"
+    os.makedirs("/tmp/upsc_reference", exist_ok=True)
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     return []
+
 
 def generate_upsc_questions_with_reference(generator, topic, context_text, reference_questions, num_questions):
     reference_sample = "\n".join(reference_questions[:min(20, len(reference_questions))])
@@ -328,16 +333,15 @@ st.subheader("Generate NCERT UPSC Questions")
 topic = st.text_input("Enter chapter/topic (example: 'Constitution', 'Electricity')", key="topic_input")
 num_questions = st.number_input("Number of questions to generate", min_value=1, max_value=20, value=5, key="num_questions_input")
 
-if st.button("Generate Questions", key="generate_button"):
-    if not topic.strip():
-        st.warning("Please enter a valid chapter/topic.")
+# 1️⃣ Move retrieved_chunks and context_text inside button
+if st.button("Generate Questions"):
+    retrieved_chunks = retrieve_chunks(topic, index, metadata, top_k=TOP_K)
+    if not retrieved_chunks:
+        st.warning(f"No relevant NCERT content found for '{topic}' in {subject}.")
     else:
-        retrieved_chunks = retrieve_chunks(topic, index, metadata, top_k=TOP_K)
-        if not retrieved_chunks:
-            st.warning(f"No relevant NCERT content found for '{topic}' in {subject}.")
-        else:
-            context_text = "\n\n".join([r["text"][:1200] for r in retrieved_chunks])
-            context_text = clean_ncert_text(context_text)
+        context_text = "\n\n".join([r["text"][:1200] for r in retrieved_chunks])
+        context_text = clean_ncert_text(context_text)
+
             final_questions = generate_upsc_questions_with_reference(generator, topic, context_text, reference_questions, num_questions)
 
             if final_questions:
