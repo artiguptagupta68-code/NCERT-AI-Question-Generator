@@ -228,7 +228,11 @@ def generate_n_distinct_questions(generator, topic, context_text, num_questions)
         prompt = f"""
 You are an expert NCERT question setter.
 
-Generate ONE meaningful question strictly based on the following NCERT context.
+Generate {num_questions} distinct, exam-style questions based ONLY on the following NCERT context.
+- Start each question with What, Why, How, Explain, Describe, State, Define, Discuss, Examine, Evaluate.
+- End each question with a question mark (?).
+- Do NOT invent facts or names.
+- Each question should be complete, clear, and answerable from NCERT content.
 
 ### STRICT RULES
 - Use only NCERT facts visible in the context.
@@ -317,7 +321,7 @@ if st.button("Generate Questions", key="generate_button"):
         if not retrieved_chunks:
             st.warning(f"No relevant NCERT content found for '{topic}' in {subject}.")
         else:
-            context_text = "\n\n".join([r["text"][:1200] for r in retrieved_chunks])
+            context_text = "\n\n".join([r["text"][:3000] for r in retrieved_chunks])
             context_text = clean_ncert_text(context_text)
             final_questions = generate_n_distinct_questions(generator, topic, context_text, num_questions)
 
