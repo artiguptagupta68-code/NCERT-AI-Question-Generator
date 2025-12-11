@@ -252,23 +252,38 @@ generator = load_generator_pipeline()
 st.success("Generator model loaded.")
 
 # 6. Generate Questions
+# 6. Generate Questions
 st.subheader("Generate Questions")
 topic = st.text_input("Enter chapter/topic (example: 'Constitution', 'Electricity'):")
+num_questions = st.number_input("Number of questions to generate", min_value=1, max_value=20, value=5)
+
 if st.button("Generate Questions") and topic.strip():
     with st.spinner("Retrieving top chunks..."):
         top_chunks = retrieve_chunks(topic, index, metadata)
     if not top_chunks:
         st.warning("No relevant NCERT content found for this topic.")
     else:
-        prompt = build_question_prompt(top_chunks, topic)
+        # Update prompt to include number of questions
+        context_text = "\n\n".join([c["text"] for c in top_chunks])
+        prompt = (
+            f"You are an expert NCERT question generator.\n"
+            f"Based ONLY on the following NCERT context, generate {num_questions} exam-style questions.\n"
+            f"Each question must be descriptive, clear, and based fully on NCERT content.\n\n"
+            f"Topic: {topic}\n\n"
+            f"NCERT Context:\n{context_text}\n\n"
+            f"Generate exactly {num_questions} numbered questions:"
+        )
+
         try:
-            out = generator(prompt, max_length=400, do_sample=False)[0]["generated_text"]
+            out = generator(prompt, max_length=400*num_questions, do_sample=False)[0]["generated_text"]
         except Exception as e:
             st.error(f"Generation failed: {e}")
             out = ""
-        st.markdown("### Generated Questions")
+
+        st.markdown(f"### Generated {num_questions} Questions")
         st.write(out)
 
         st.markdown("### Sources used")
         for r in top_chunks:
             st.write(f"{r['doc_id']} — {r['chunk_id']}")
+
