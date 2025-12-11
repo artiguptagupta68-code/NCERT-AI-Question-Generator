@@ -341,8 +341,7 @@ if st.button("Generate Questions"):
     else:
         context_text = "\n\n".join([r["text"][:1200] for r in retrieved_chunks])
         context_text = clean_ncert_text(context_text)
-
-            final_questions = generate_upsc_questions_with_reference(generator, topic, context_text, reference_questions, num_questions)
+        final_questions = generate_upsc_questions_with_reference(generator, topic, context_text, reference_questions, num_questions)
 
             if final_questions:
                 st.success(f"Generated {len(final_questions)} Questions")
