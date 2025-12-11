@@ -296,8 +296,7 @@ if st.button("Generate Questions", key="generate_btn"):
                     out = ""
 
             # Extract exactly N questions
-           final_questions = extract_questions_from_text(out, num_questions)
-
+            final_questions = extract_questions_from_text(out, num_questions)
             if final_questions and len(final_questions) == num_questions:
                 st.success(f"Generated exactly {len(final_questions)} Questions")
                 for i, q in enumerate(final_questions, 1):
