@@ -1,4 +1,4 @@
-
+# app.py
 import os
 import zipfile
 import shutil
@@ -27,8 +27,7 @@ EXTRACT_DIR = "ncert_extracted"
 CHUNK_SIZE = 1200
 CHUNK_OVERLAP = 200
 EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
-GEN_MODEL_NAME = "google/flan-t5-base"
-
+GEN_MODEL_NAME = "google/flan-t5-large"
 TOP_K = 4
 SUBJECTS = ["Polity", "Sociology", "Psychology", "Business Studies", "Economics"]
 
@@ -57,7 +56,6 @@ def extract_zip(zip_path: str, extract_to: str):
     os.makedirs(extract_to, exist_ok=True)
     with zipfile.ZipFile(zip_path, "r") as z:
         z.extractall(extract_to)
-    # handle nested zips
     for root, _, files in os.walk(extract_to):
         for f in files:
             if f.lower().endswith(".zip"):
@@ -108,7 +106,6 @@ def read_pdf_text(path):
 # ----------------------------
 # Load PDFs by subject
 # ----------------------------
-5
 def load_docs_by_subject(folder, subject_keyword):
     subject_keyword = subject_keyword.lower()
     docs = []
@@ -124,11 +121,11 @@ def load_docs_by_subject(folder, subject_keyword):
     return docs
 
 # ----------------------------
-# Text cleaning
+# Clean NCERT metadata
 # ----------------------------
 def clean_ncert_text(text):
     patterns = [
-        r"Reprint\s*\d{4}-\d{2}",
+        r"Reprint\s*\d{4}-\d{2}", 
         r"ISBN[\s:0-9-]+",
         r"NCERT[\s\S]{0,50}Publication",
         r"Not for commercial use",
@@ -136,19 +133,16 @@ def clean_ncert_text(text):
         r"Publication Division",
         r"©[\s\S]{0,30}",
         r"[A-Za-z ]+ Rao",
-        r"[A-Za-z ]+ Singh",
-        r"\b[Pp]assage\b"  # replace with text later
+        r"[A-Za-z ]+ Singh"
     ]
     for p in patterns:
         text = re.sub(p, "", text, flags=re.IGNORECASE)
-    # collapse multiple newlines
-    text = re.sub(r"\n\s*\n+", "\n\n", text)
+    text = re.sub(r"\n\s*\n", "\n", text)
     return text.strip()
 
 # ----------------------------
 # Chunking
 # ----------------------------
-@st.cache_data(show_spinner=False)
 def chunk_documents(docs, chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP):
     all_chunks = []
     for doc in docs:
@@ -185,7 +179,7 @@ def build_faiss_index(chunks):
 # ----------------------------
 # Generator pipeline
 # ----------------------------
-
+@st.cache_resource
 def load_generator_pipeline():
     device = 0 if torch.cuda.is_available() else -1
     tokenizer = AutoTokenizer.from_pretrained(GEN_MODEL_NAME)
@@ -208,17 +202,17 @@ def retrieve_chunks(query, index, metadata, top_k=TOP_K):
     return results
 
 # ----------------------------
-# Extract questions from text
+# Generate distinct questions
 # ----------------------------
-QUESTION_START_WORDS = ["What", "Why", "How", "Explain", "Describe", "State", "Define", "Discuss", "Examine", "Evaluate", "Compare", "Tell"]
+QUESTION_START_WORDS = ["What", "Why", "How", "Explain", "Describe", "State", "Define", "Discuss", "Examine", "Evaluate", "Tell"]
 
-def extract_questions_from_text(text, num_questions):
+def extract_questions(text, num_questions):
     pattern = r'(?:' + '|'.join(QUESTION_START_WORDS) + r').*?\?'
     matches = re.findall(pattern, text, flags=re.IGNORECASE | re.DOTALL)
     seen = set()
     final = []
     for q in matches:
-        q_clean = q.replace("passage", "text").strip()
+        q_clean = q.strip()
         if q_clean not in seen:
             seen.add(q_clean)
             final.append(q_clean)
@@ -226,54 +220,48 @@ def extract_questions_from_text(text, num_questions):
             break
     return final
 
-# ----------------------------
-# Generate n distinct exam-style questions
-# ----------------------------
 def generate_n_distinct_questions(generator, topic, context_text, num_questions):
     questions = []
     attempts = 0
     max_attempts = num_questions * 6
-
     while len(questions) < num_questions and attempts < max_attempts:
         prompt = f"""
 You are an expert NCERT question setter.
 
-Generate ONE meaningful, exam-style question strictly based on the NCERT context below.
+Generate ONE meaningful question strictly based on the following NCERT context.
 
-Rules:
+### STRICT RULES
 - Use only NCERT facts visible in the context.
-- The question must be full, clear, and exam-style.
-- Start with interrogative words: {', '.join(QUESTION_START_WORDS)}.
-- End with a question mark (?).
-- Avoid generic placeholders like “State briefly”, “These”, “passage”, “text not given”, or any reprints.
+- The question MUST relate to the topic: **{topic}**
+- Do NOT use placeholders like “the passage”.
+- The question MUST end with a question mark (?).
 
-Topic: {topic}
-
-NCERT CONTEXT:
+### NCERT CONTEXT:
 {context_text}
 
-Output:
+### Output:
 One meaningful question:
 """
-        try:
-            out = generator(prompt, max_length=200, do_sample=True, temperature=0.4, top_p=0.9)[0]["generated_text"]
-        except Exception:
-            out = ""
-
-        new_qs = extract_questions_from_text(out, 1)
+        out = generator(
+            prompt,
+            max_length=200,
+            do_sample=True,
+            temperature=0.6,
+            top_p=0.9
+        )[0]["generated_text"]
+        new_qs = extract_questions(out, 1)
         if new_qs:
             q = new_qs[0]
-            junk = ["State briefly", "These", "…", "not given"]
-            if any(j in q for j in junk) or len(q.split()) < 5:
+            bad_words = ["Reprint", "Shweta", "ISBN", "Publication", "Government of India"]
+            if any(bad in q for bad in bad_words):
                 attempts += 1
                 continue
-            if q not in questions:
+            if q not in questions and len(q.split()) > 4:
                 questions.append(q)
         attempts += 1
 
     while len(questions) < num_questions:
-        questions.append("Model could not generate a distinct question. Try simplifying the topic.")
-
+        questions.append("Model could not generate a distinct question. Reduce number or simplify topic.")
     return questions
 
 # ----------------------------
@@ -284,7 +272,6 @@ ok = download_zip_from_drive(FILE_ID, ZIP_PATH)
 if not ok:
     st.error("Failed to download NCERT ZIP. Upload manually or check FILE_ID.")
     st.stop()
-
 if not zipfile.is_zipfile(ZIP_PATH):
     st.error(f"{ZIP_PATH} is not a valid ZIP file.")
     st.stop()
@@ -292,6 +279,7 @@ if not zipfile.is_zipfile(ZIP_PATH):
 extract_zip(ZIP_PATH, EXTRACT_DIR)
 st.success(f"NCERT ZIP extracted to: {EXTRACT_DIR}")
 
+# Subject selection
 subject = st.selectbox("Select Subject", SUBJECTS)
 docs = load_docs_by_subject(EXTRACT_DIR, subject)
 st.info(f"Loaded {len(docs)} PDFs for {subject}")
@@ -299,16 +287,44 @@ if not docs:
     st.warning(f"No readable PDFs found for {subject}.")
     st.stop()
 
+# Chunk documents
 all_chunks = chunk_documents(docs)
 st.info(f"Total chunks created: {len(all_chunks)}")
 
+# Build FAISS
 embed_model, index, metadata = build_faiss_index(all_chunks)
 if index is None:
     st.error("Failed to build FAISS index.")
     st.stop()
 st.success("FAISS index ready.")
 
+# Load generator
 generator = load_generator_pipeline()
 st.success("Generator model loaded.")
 
+# ----------------------------
+# Dashboard: Topic & Questions
+# ----------------------------
+st.subheader("Generate NCERT Questions")
+topic = st.text_input("Enter chapter/topic (example: 'Constitution', 'Electricity')", key="topic_input")
+num_questions = st.number_input("Number of questions to generate", min_value=1, max_value=20, value=5, key="num_questions_input")
 
+if st.button("Generate Questions", key="generate_button"):
+    if not topic.strip():
+        st.warning("Please enter a valid chapter/topic.")
+    else:
+        retrieved_chunks = retrieve_chunks(topic, index, metadata, top_k=TOP_K)
+        if not retrieved_chunks:
+            st.warning(f"No relevant NCERT content found for '{topic}' in {subject}.")
+        else:
+            context_text = "\n\n".join([r["text"][:1200] for r in retrieved_chunks])
+            context_text = clean_ncert_text(context_text)
+            final_questions = generate_n_distinct_questions(generator, topic, context_text, num_questions)
+
+            st.success(f"Generated {len(final_questions)} Questions")
+            for i, q in enumerate(final_questions, 1):
+                st.write(f"{i}. {q}")
+
+            st.write("### Sources used")
+            for r in retrieved_chunks:
+                st.write(f"{r['doc_id']} — {r['chunk_id']}")
