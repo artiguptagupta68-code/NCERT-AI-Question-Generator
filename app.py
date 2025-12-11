@@ -108,7 +108,7 @@ def read_pdf_text(path):
 # ----------------------------
 # Load PDFs by subject
 # ----------------------------
-@st.cache_data(show_spinner=False)
+5
 def load_docs_by_subject(folder, subject_keyword):
     subject_keyword = subject_keyword.lower()
     docs = []
