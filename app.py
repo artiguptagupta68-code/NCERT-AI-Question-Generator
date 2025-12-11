@@ -257,10 +257,21 @@ st.success("Generator model loaded.")
 # Helper: extract questions
 # ----------------------------
 import re
+# ----------------------------
+# Helper: extract questions
+# ----------------------------
+import re
+
 def extract_questions_any_format(text, num_questions):
+    """
+    Extracts questions from model output that start with interrogative words
+    and end with a question mark.
+    Returns a list of up to num_questions distinct questions.
+    """
     question_starts = r'(What|Why|How|Explain|Describe|State|Define|Discuss|Examine|Evaluate)'
     pattern = rf'{question_starts}.*?\?'
     matches = re.findall(pattern, text, flags=re.IGNORECASE | re.DOTALL)
+    
     seen = set()
     final = []
     for q in matches:
@@ -271,6 +282,7 @@ def extract_questions_any_format(text, num_questions):
         if len(final) >= num_questions:
             break
     return final
+
 
 # ----------------------------
 # 6️⃣ User input: topic and number of questions
