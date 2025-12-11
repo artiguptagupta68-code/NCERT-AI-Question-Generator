@@ -342,13 +342,14 @@ if st.button("Generate Questions"):
         context_text = "\n\n".join([r["text"][:1200] for r in retrieved_chunks])
         context_text = clean_ncert_text(context_text)
         final_questions = generate_upsc_questions_with_reference(generator, topic, context_text, reference_questions, num_questions)
-
-            if final_questions:
-                st.success(f"Generated {len(final_questions)} Questions")
-                for i, q in enumerate(final_questions, 1):
-                    st.write(f"{i}. {q}")
+        
+        if final_questions:
+            st.success(f"Generated {len(final_questions)} Questions")
+            for i, q in enumerate(final_questions, 1):
+                st.write(f"{i}. {q}")
                 st.write("### Sources used")
                 for r in retrieved_chunks:
                     st.write(f"{r['doc_id']} — {r['chunk_id']}")
-            else:
-                st.warning("Model could not generate distinct questions. Reduce number or simplify topic.")
+        
+        else:
+            st.warning("Model could not generate distinct questions. Reduce number or simplify topic.")
