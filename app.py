@@ -185,7 +185,7 @@ def build_faiss_index(chunks):
 # ----------------------------
 # Generator pipeline
 # ----------------------------
-@st.cache_resource
+
 def load_generator_pipeline():
     device = 0 if torch.cuda.is_available() else -1
     tokenizer = AutoTokenizer.from_pretrained(GEN_MODEL_NAME)
