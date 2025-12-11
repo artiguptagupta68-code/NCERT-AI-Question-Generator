@@ -189,20 +189,34 @@ def retrieve_chunks(query, index, metadata, embed_model, top_k=TOP_K):
 # ----------------------------
 # EXTRACT NUMBERED QUESTIONS
 # ----------------------------
-def extract_numbered_questions(text, num_questions):
+def extract_questions_from_text(text, num_questions):
     """
-    Extract exactly num_questions from numbered list in model output
+    Extracts exactly num_questions questions from text.
+    A question:
+    - starts with interrogative words
+    - ends with a question mark
     """
-    lines = re.split(r'\n?\d+\.\s', text)
+    question_words = r"(What|Why|How|Explain|Describe|State|Define|Discuss|Examine|Evaluate)"
+    pattern = rf"{question_words}.*?\?"
+    matches = re.findall(pattern, text, flags=re.IGNORECASE | re.DOTALL)
+
+    # Remove duplicates
+    seen = set()
     questions = []
-    for q in lines[1:]:
+    for q in matches:
         q_clean = q.strip()
-        if q_clean and not q_clean.endswith("?"):
-            q_clean += "?"
-        questions.append(q_clean)
+        if q_clean not in seen:
+            seen.add(q_clean)
+            questions.append(q_clean)
         if len(questions) >= num_questions:
             break
+
+    # If model returned fewer than requested, pad with placeholder
+    while len(questions) < num_questions:
+        questions.append("Model could not generate this question. Try simplifying topic or reducing number of questions.")
+
     return questions
+
 
 # ----------------------------
 # ORCHESTRATION
@@ -282,7 +296,7 @@ if st.button("Generate Questions", key="generate_btn"):
                     out = ""
 
             # Extract exactly N questions
-            final_questions = extract_numbered_questions(out, num_questions)
+           final_questions = extract_questions_from_text(out, num_questions)
 
             if final_questions and len(final_questions) == num_questions:
                 st.success(f"Generated exactly {len(final_questions)} Questions")
