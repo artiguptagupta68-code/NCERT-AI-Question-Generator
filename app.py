@@ -294,61 +294,61 @@ if st.button("Generate Questions"):
                     out = ""
 
            # ----------------------------
-# UI: topic input -> generate multiple questions
-# ----------------------------
 st.subheader("Generate NCERT Questions")
-topic = st.text_input("Enter chapter/topic (example: 'Constitution', 'Electricity'):")
-num_q = st.number_input("Number of questions to generate", min_value=1, max_value=20, value=5)
 
-if topic and num_q:
-    with st.spinner("Retrieving relevant NCERT text..."):
-        retrieved = retrieve_chunks(topic, index, metadata, top_k=TOP_K)
-    
-    if not retrieved:
-        st.warning("No relevant NCERT content found for this topic. Try a different keyword.")
+# 1️⃣ Subject selection dropdown
+subject = st.selectbox(
+    "Select Subject",
+    ["Polity", "Sociology", "Psychology", "Business Studies", "Economics"],
+    key="subject_select"
+)
+
+# 2️⃣ Topic/chapter input
+topic = st.text_input(
+    "Enter chapter/topic (example: 'Constitution', 'Electricity'):",
+    key="topic_input"
+)
+
+# 3️⃣ Number of questions
+num_questions = st.number_input(
+    "Number of questions to generate",
+    min_value=1,
+    max_value=20,
+    value=5,
+    key="num_questions_input"
+)
+
+# 4️⃣ Generate button
+if st.button("Generate Questions", key="generate_btn"):
+    if not topic.strip():
+        st.warning("Please enter a chapter/topic.")
     else:
-        # Build the context prompt
-        context_text = "\n\n".join([r['text'] for r in retrieved])
-        prompt = (
-            "You are an expert NCERT question generator.\n"
-            f"Based ONLY on the following NCERT context, generate exactly {int(num_q)} questions.\n"
-            "Rules:\n"
-            "- Each question must start with a question word (What, Why, How, Explain, Describe, State, Define, Discuss, Examine, Evaluate).\n"
-            "- Each question must end with a question mark.\n"
-            "- Do not add extra text.\n\n"
-            f"Topic: {topic}\n\n"
-            f"NCERT Context:\n{context_text}\n\n"
-            "Generate the questions:"
-        )
-
-        with st.spinner("Generating questions..."):
+        # Retrieve relevant chunks for the chosen subject
+        retrieved_chunks = retrieve_chunks(topic, index, metadata, top_k=TOP_K)
+        if not retrieved_chunks:
+            st.warning(f"No relevant NCERT content found for '{topic}' in {subject}.")
+        else:
+            # Build prompt for generator
+            prompt = build_question_prompt(retrieved_chunks, topic, num_questions)
+            
+            # Generate questions
             try:
                 out = generator(prompt, max_length=600, do_sample=True, temperature=0.3)[0]["generated_text"]
             except Exception as e:
-                st.error(f"Generation failed: {e}")
+                st.error(f"Question generation failed: {e}")
                 out = ""
 
-        # Simple extraction: split by line and filter valid questions
-        lines = [line.strip() for line in out.splitlines() if line.strip()]
-        question_words = ("What", "Why", "How", "Explain", "Describe", "State", "Define", "Discuss", "Examine", "Evaluate")
-        final_questions = []
-        for ln in lines:
-            # Ensure it starts with a question word and ends with '?'
-            if ln.startswith(question_words) and ln.endswith("?"):
-                final_questions.append(ln)
-            elif ln.startswith(question_words):
-                final_questions.append(ln.rstrip(".") + "?")
-            if len(final_questions) >= int(num_q):
-                break
+            # Extract individual questions (starting with question words, ending with '?')
+            final_questions = extract_questions_any_format(out, num_questions)
 
-        if final_questions:
-            st.success(f"Generated {len(final_questions)} Questions")
-            for i, q in enumerate(final_questions, 1):
-                st.write(f"{i}. {q}")
-        else:
-            st.warning("No valid questions generated. Try rephrasing the topic or increasing Top-K chunks.")
-        
-        # Show sources
-        st.write("### Sources used")
-        for r in retrieved:
-            st.write(f"{r['doc_id']} — {r['chunk_id']}")
+            if final_questions:
+                st.success(f"Generated {len(final_questions)} Questions")
+                for i, q in enumerate(final_questions, 1):
+                    st.write(f"{i}. {q}")
+                
+                # Show sources used
+                st.write("### Sources used")
+                for r in retrieved_chunks:
+                    st.write(f"{r['doc_id']} — {r['chunk_id']}")
+            else:
+                st.warning("No questions could be extracted. Check the NCERT PDFs or try a different topic.")
