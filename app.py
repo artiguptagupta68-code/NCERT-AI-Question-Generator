@@ -142,6 +142,14 @@ def clean_ncert_text(text):
     text = re.sub(r"\n\s*\n", "\n", text)
 
     return text.strip()
+# Combine top-K chunks into context
+context_parts = [r["text"][:1000] for r in retrieved]
+context_text = "\n\n".join(context_parts)
+
+# Clean noisy NCERT metadata from text
+context_text = clean_ncert_text(context_text)
+
+
 context_text = clean_ncert_text(context_text)
 
 
