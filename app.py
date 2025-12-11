@@ -3,10 +3,13 @@ import os
 import zipfile
 import shutil
 from pathlib import Path
+import json
+import re
 import streamlit as st
 import gdown
 import torch
 from pypdf import PdfReader
+
 try:
     import fitz  # PyMuPDF
     _HAS_PYMUPDF = True
@@ -16,12 +19,11 @@ except ImportError:
 from sentence_transformers import SentenceTransformer
 import faiss
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
-import re
 
 # ----------------------------
 # CONFIG
 # ----------------------------
-FILE_ID = "1gdiCsGOeIyaDlJ--9qon8VTya3dbjr6G"  # NCERT zip file
+FILE_ID = "1gdiCsGOeIyaDlJ--9qon8VTya3dbjr6G"
 ZIP_PATH = "ncert.zip"
 EXTRACT_DIR = "ncert_extracted"
 CHUNK_SIZE = 1200
@@ -31,12 +33,12 @@ GEN_MODEL_NAME = "google/flan-t5-large"
 TOP_K = 4
 SUBJECTS = ["Polity", "Sociology", "Psychology", "Business Studies", "Economics"]
 
-st.set_page_config(page_title="NCERT UPSC Question Generator", layout="wide")
-st.title("📘 NCERT UPSC Question Generator")
-st.caption("Generate UPSC-style questions from NCERT chapters")
+st.set_page_config(page_title="NCERT AI UPSC Question Generator", layout="wide")
+st.title("📘 NCERT AI UPSC Question Generator")
+st.caption("Generate UPSC-style NCERT questions using RAG + Transformers")
 
 # ----------------------------
-# Utilities
+# UTILITIES
 # ----------------------------
 def download_zip_from_drive(file_id: str, out_path: str) -> bool:
     if os.path.exists(out_path):
@@ -56,6 +58,7 @@ def extract_zip(zip_path: str, extract_to: str):
     os.makedirs(extract_to, exist_ok=True)
     with zipfile.ZipFile(zip_path, "r") as z:
         z.extractall(extract_to)
+    # Handle nested zips
     for root, _, files in os.walk(extract_to):
         for f in files:
             if f.lower().endswith(".zip"):
@@ -69,7 +72,7 @@ def extract_zip(zip_path: str, extract_to: str):
                     pass
 
 # ----------------------------
-# PDF reading
+# PDF READING
 # ----------------------------
 def read_pdf_pypdf(path):
     try:
@@ -104,7 +107,7 @@ def read_pdf_text(path):
     return read_pdf_pymupdf(path)
 
 # ----------------------------
-# Load PDFs by subject
+# LOAD PDFs BY SUBJECT
 # ----------------------------
 def load_docs_by_subject(folder, subject_keyword):
     subject_keyword = subject_keyword.lower()
@@ -121,11 +124,11 @@ def load_docs_by_subject(folder, subject_keyword):
     return docs
 
 # ----------------------------
-# Clean NCERT text
+# CLEAN NCERT TEXT
 # ----------------------------
 def clean_ncert_text(text):
     patterns = [
-        r"Reprint\s*\d{4}-\d{2}",
+        r"Reprint\s*\d{4}-\d{2}", 
         r"ISBN[\s:0-9-]+",
         r"NCERT[\s\S]{0,50}Publication",
         r"Not for commercial use",
@@ -141,7 +144,7 @@ def clean_ncert_text(text):
     return text.strip()
 
 # ----------------------------
-# Chunk documents
+# CHUNK DOCUMENTS
 # ----------------------------
 def chunk_documents(docs, chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP):
     all_chunks = []
@@ -161,7 +164,7 @@ def chunk_documents(docs, chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP):
     return all_chunks
 
 # ----------------------------
-# Embeddings + FAISS
+# FAISS INDEX
 # ----------------------------
 @st.cache_resource
 def build_faiss_index(chunks):
@@ -177,7 +180,7 @@ def build_faiss_index(chunks):
     return model, index, metadata
 
 # ----------------------------
-# Generator pipeline
+# GENERATOR PIPELINE
 # ----------------------------
 @st.cache_resource
 def load_generator_pipeline():
@@ -190,7 +193,7 @@ def load_generator_pipeline():
     return gen
 
 # ----------------------------
-# Retrieve chunks
+# RETRIEVE TOP CHUNKS
 # ----------------------------
 def retrieve_chunks(query, index, metadata, top_k=TOP_K):
     if index is None or metadata is None:
@@ -202,70 +205,88 @@ def retrieve_chunks(query, index, metadata, top_k=TOP_K):
     return results
 
 # ----------------------------
-# Extract UPSC questions
+# EXTRACT QUESTIONS
 # ----------------------------
 QUESTION_START_WORDS = ["What", "Why", "How", "Explain", "Describe", "State", "Define", "Discuss", "Examine", "Evaluate", "Tell"]
-
 def extract_questions(text, num_questions):
-    pattern = r'(?:' + '|'.join(QUESTION_START_WORDS) + r')[^\n\?]{5,}?\?'
+    pattern = r'(?:' + '|'.join(QUESTION_START_WORDS) + r').*?\?'
     matches = re.findall(pattern, text, flags=re.IGNORECASE | re.DOTALL)
     seen = set()
     final = []
     for q in matches:
         q_clean = q.strip()
-        if q_clean not in seen and "passage" not in q_clean.lower():
+        if q_clean not in seen:
             seen.add(q_clean)
             final.append(q_clean)
         if len(final) >= num_questions:
             break
     return final
 
-def generate_n_distinct_questions(generator, topic, context_text, num_questions):
-    questions = []
-    attempts = 0
-    max_attempts = num_questions * 6
-
-    while len(questions) < num_questions and attempts < max_attempts:
+# ----------------------------
+# UPSC REFERENCE QUESTIONS
+# ----------------------------
+def pre_generate_upsc_questions(generator, docs, subject, n_questions=500):
+    all_text = "\n\n".join([clean_ncert_text(d["text"])[:1500] for d in docs])
+    reference_questions = []
+    for i in range(n_questions):
         prompt = f"""
 You are an expert UPSC question setter.
 
-Generate ONE meaningful, exam-style question strictly based on the following NCERT context.
+Generate ONE UPSC-style exam question strictly based on the following NCERT context.
+Use only the NCERT facts.
 
-### RULES
-- Do NOT use placeholders like “passage” or “text”.
-- The question must be answerable using NCERT content only.
-- The question must end with a question mark (?).
-- The question MUST relate to the topic: {topic}
+Context (subject: {subject}):
+{all_text}
 
-NCERT CONTEXT:
-{context_text}
-
-Output one question:
+Output:
+One UPSC-style question.
 """
         out = generator(prompt, max_length=200, do_sample=True, temperature=0.6, top_p=0.9)[0]["generated_text"]
-        new_qs = extract_questions(out, 1)
+        qs = extract_questions(out, 1)
+        if qs:
+            reference_questions.append(qs[0])
+    os.makedirs("upsc_reference", exist_ok=True)
+    path = f"upsc_reference/{subject.replace(' ','_')}_questions.json"
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(reference_questions, f, indent=2, ensure_ascii=False)
+    return path
 
-        if new_qs:
-            q = new_qs[0]
-            bad_words = ["Reprint", "Shweta", "ISBN", "Publication", "Government of India"]
-            if any(bad in q for bad in bad_words):
-                attempts += 1
-                continue
-            if q not in questions and len(q.split()) > 4:
-                questions.append(q)
-        attempts += 1
+def load_upsc_reference(subject):
+    path = f"upsc_reference/{subject.replace(' ','_')}_questions.json"
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
 
-    while len(questions) < num_questions:
-        questions.append("Model could not generate a distinct question. Please reduce the number or simplify the topic.")
-    return questions
+def generate_upsc_questions_with_reference(generator, topic, context_text, reference_questions, num_questions):
+    reference_sample = "\n".join(reference_questions[:min(20, len(reference_questions))])
+    prompt = f"""
+You are an expert UPSC question setter.
+
+Based on the NCERT context below AND using the style and phrasing from the following UPSC reference questions, generate {num_questions} exam-style questions for the topic: {topic}.
+
+NCERT Context:
+{context_text}
+
+Reference UPSC Questions:
+{reference_sample}
+
+Output {num_questions} distinct questions numbered 1., 2., 3., ... 
+Each question must:
+- Start with interrogative words (What, Why, How, Explain, etc.)
+- End with a question mark (?)
+- Be meaningful, based ONLY on NCERT context
+"""
+    out = generator(prompt, max_length=600, do_sample=True, temperature=0.5, top_p=0.9)[0]["generated_text"]
+    return extract_questions(out, num_questions)
 
 # ----------------------------
-# Orchestration
+# ORCHESTRATION
 # ----------------------------
 st.text("Preparing NCERT content...")
 ok = download_zip_from_drive(FILE_ID, ZIP_PATH)
 if not ok:
-    st.error("Failed to download NCERT ZIP. Upload manually or check FILE_ID.")
+    st.error("Failed to download NCERT ZIP.")
     st.stop()
 if not zipfile.is_zipfile(ZIP_PATH):
     st.error(f"{ZIP_PATH} is not a valid ZIP file.")
@@ -281,23 +302,29 @@ if not docs:
     st.warning(f"No readable PDFs found for {subject}.")
     st.stop()
 
-# Chunk documents
+# Chunking
 all_chunks = chunk_documents(docs)
 st.info(f"Total chunks created: {len(all_chunks)}")
 
-# Build FAISS
+# FAISS
 embed_model, index, metadata = build_faiss_index(all_chunks)
 if index is None:
     st.error("Failed to build FAISS index.")
     st.stop()
 st.success("FAISS index ready.")
 
-# Load generator
+# Generator
 generator = load_generator_pipeline()
 st.success("Generator model loaded.")
 
+# Load UPSC reference questions
+if not os.path.exists(f"upsc_reference/{subject.replace(' ','_')}_questions.json"):
+    st.text(f"Generating reference UPSC questions for {subject} (one-time)...")
+    pre_generate_upsc_questions(generator, docs, subject)
+reference_questions = load_upsc_reference(subject)
+
 # User input
-st.subheader("Generate UPSC Questions")
+st.subheader("Generate NCERT UPSC Questions")
 topic = st.text_input("Enter chapter/topic (example: 'Constitution', 'Electricity')", key="topic_input")
 num_questions = st.number_input("Number of questions to generate", min_value=1, max_value=20, value=5, key="num_questions_input")
 
@@ -309,11 +336,9 @@ if st.button("Generate Questions", key="generate_button"):
         if not retrieved_chunks:
             st.warning(f"No relevant NCERT content found for '{topic}' in {subject}.")
         else:
-            context_parts = [r["text"][:1200] for r in retrieved_chunks]
-            context_text = "\n\n".join(context_parts)
+            context_text = "\n\n".join([r["text"][:1200] for r in retrieved_chunks])
             context_text = clean_ncert_text(context_text)
-
-            final_questions = generate_n_distinct_questions(generator, topic, context_text, num_questions)
+            final_questions = generate_upsc_questions_with_reference(generator, topic, context_text, reference_questions, num_questions)
 
             if final_questions:
                 st.success(f"Generated {len(final_questions)} Questions")
@@ -322,3 +347,5 @@ if st.button("Generate Questions", key="generate_button"):
                 st.write("### Sources used")
                 for r in retrieved_chunks:
                     st.write(f"{r['doc_id']} — {r['chunk_id']}")
+            else:
+                st.warning("Model could not generate distinct questions. Reduce number or simplify topic.")
