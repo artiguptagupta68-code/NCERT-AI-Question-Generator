@@ -279,23 +279,34 @@ topic = st.text_input("Enter chapter/topic (example: 'Constitution', 'Electricit
 num_questions = st.number_input("Number of questions to generate", min_value=1, max_value=20, value=5, key="num_questions_input")
 
 # 7️⃣ Generate button
+# 7️⃣ Generate button
 if st.button("Generate Questions", key="generate_btn"):
     if not topic.strip():
         st.warning("Please enter a valid chapter/topic.")
     else:
+        # Retrieve relevant chunks
         retrieved_chunks = retrieve_chunks(topic, index, metadata, top_k=TOP_K)
         if not retrieved_chunks:
             st.warning(f"No relevant NCERT content found for '{topic}' in {subject}.")
         else:
-            context_text = "\n\n".join([r["text"][:1000] for r in retrieved_chunks])
-           final_questions = generate_n_distinct_questions(generator, topic, context_text, num_questions)
-)
+            # Build prompt context
+            context_parts = [r["text"][:1000] for r in retrieved_chunks]
+            context_text = "\n\n".join(context_parts)
 
-            st.success(f"Generated {len(final_questions)} Questions")
-            for i, q in enumerate(final_questions, 1):
-                st.write(f"{i}. {q}")
+            # Generate distinct questions
+            final_questions = generate_n_distinct_questions(generator, topic, context_text, num_questions)
 
-            # Show sources used
-            st.write("### Sources used")
-            for r in retrieved_chunks:
+            # Display questions
+            if final_questions:
+                st.success(f"Generated {len(final_questions)} Questions")
+                for i, q in enumerate(final_questions, 1):
+                    st.write(f"{i}. {q}")
+
+                # Show sources used
+                st.write("### Sources used")
+                for r in retrieved_chunks:
+                    st.write(f"{r['doc_id']} — {r['chunk_id']}")
+            else:
+                st.warning("No questions could be generated. Try reducing number of questions or simplifying the topic.")
+
                 st.write(f"{r['doc_id']} — {r['chunk_id']}")
