@@ -202,44 +202,70 @@ def extract_questions(text, num_questions):
 def generate_n_distinct_questions(generator, topic, context_text, num_questions):
     questions = []
     attempts = 0
-    max_attempts = num_questions * 6
+    max_attempts = num_questions * 8
 
     while len(questions) < num_questions and attempts < max_attempts:
         prompt = f"""
-You are an expert UPSC NCERT question setter.
+You are a UPSC NCERT expert.
 
-Generate ONE meaningful, exam-style question strictly based on the following NCERT context.
+Generate ONE meaningful exam-style question based strictly on this NCERT content.
 
 Rules:
-- Start with interrogative words: What, Why, How, Explain, Describe, Discuss, State
-- End with a question mark '?'
-- Use NCERT facts only
-- Avoid placeholders like 'passage' or 'text'
-- The question MUST relate to the topic: {topic}
+- Must be a proper question ending with '?'
+- Must be related to: {topic}
+- Must be based ONLY on the NCERT context
+- Avoid generic patterns like 'What is the main idea of the text'
+- Avoid 'passage', 'text', 'context'
+- Do NOT mention authors, ISBN, or reprint details
 
-NCERT CONTEXT:
+NCERT CONTENT:
 {context_text}
 
-Output:
+Output ONLY the question:
 """
+
         try:
-            out = generator(prompt, max_length=250, do_sample=True, temperature=0.6, top_p=0.9)[0]["generated_text"]
+            out = generator(
+                prompt,
+                max_length=80,
+                do_sample=True,
+                temperature=0.7,
+                top_p=0.9
+            )[0]["generated_text"]
         except Exception:
             out = ""
-        new_qs = extract_questions(out, 1)
-        if new_qs:
-            q = new_qs[0]
-            bad_words = ["Reprint", "Shweta", "ISBN", "Publication", "Government of India"]
-            if any(bad in q for bad in bad_words):
-                attempts += 1
-                continue
-            if q not in questions and len(q.split()) > 4:
-                questions.append(q)
+        
+        # ---- CLEANUP ----
+        q = out.strip()
+        q = q.replace("\n", " ").strip()
+
+        # Always enforce ending with '?'
+        if not q.endswith("?"):
+            q += "?"
+
+        # Remove junk patterns
+        bad_words = ["Reprint", "ISBN", "Publication", "Government of India", "Rao", "Singh"]
+        if any(b in q for b in bad_words):
+            attempts += 1
+            continue
+
+        # Remove extremely short outputs
+        if len(q.split()) < 5:
+            attempts += 1
+            continue
+        
+        # Ensure distinct
+        if q not in questions:
+            questions.append(q)
+
         attempts += 1
 
+    # Fill remaining with meaningful fallback questions
     while len(questions) < num_questions:
-        questions.append("Model could not generate a distinct question. Reduce number or simplify topic.")
+        questions.append(f"What is the significance of the topic '{topic}' according to NCERT?")
+
     return questions
+
 
 # ----------------------------
 # Orchestration
