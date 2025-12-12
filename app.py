@@ -4,11 +4,9 @@ import zipfile
 import shutil
 from pathlib import Path
 import re
-import tempfile
 
 import streamlit as st
 import gdown
-import numpy as np
 import torch
 
 from pypdf import PdfReader
@@ -31,11 +29,11 @@ EXTRACT_DIR = "ncert_extracted"
 CHUNK_SIZE = 1200
 CHUNK_OVERLAP = 200
 EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
-GEN_MODEL_NAME = os.getenv("GEN_MODEL_NAME", "google/flan-t5-base")  # recommended: flan-t5-base
+GEN_MODEL_NAME = os.getenv("GEN_MODEL_NAME", "google/flan-t5-base")
 TOP_K = 4
 SUBJECTS = ["Polity", "Sociology", "Psychology", "Business Studies", "Economics"]
 
-st.set_page_config(page_title="NCERT → UPSC Question Generator (Offline)", layout="wide")
+st.set_page_config(page_title="NCERT → UPSC Question Generator", layout="wide")
 st.title("NCERT → UPSC Question Generator (Offline)")
 
 # ----------------------------
@@ -104,6 +102,7 @@ def read_pdf_pymupdf(path: str) -> str:
     if not _HAS_PYMUPDF:
         return ""
     try:
+        import fitz
         doc = fitz.open(path)
         text = []
         for page in doc:
@@ -124,23 +123,14 @@ def read_pdf_text(path: str) -> str:
     return read_pdf_pymupdf(path)
 
 # ----------------------------
-# Load documents by subject folder name or filename containing keyword
+# Load documents by subject
 # ----------------------------
-def list_all_pdfs(base_dir: str):
-    out = []
-    for root, _, files in os.walk(base_dir):
-        for f in files:
-            if f.lower().endswith(".pdf"):
-                out.append(os.path.join(root, f))
-    return sorted(out)
-
 def load_docs_by_subject(base_dir: str, subject_keyword: str):
     subject_keyword = subject_keyword.lower()
     docs = []
     for root, _, files in os.walk(base_dir):
         for f in files:
             if f.lower().endswith(".pdf"):
-                # match either folder name or file name
                 combined = (Path(root).name + " " + f).lower()
                 if subject_keyword in combined:
                     p = os.path.join(root, f)
@@ -150,7 +140,7 @@ def load_docs_by_subject(base_dir: str, subject_keyword: str):
     return docs
 
 # ----------------------------
-# Chunking (simple deterministic)
+# Chunking
 # ----------------------------
 def chunk_documents(docs, chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP):
     chunks = []
@@ -193,21 +183,17 @@ def retrieve_topk(index, embed_model, query, top_k=TOP_K):
     if index is None:
         return []
     q_emb = embed_model.encode([query], convert_to_numpy=True).astype("float32")
-    if q_emb.ndim == 1:
-        q_emb = q_emb.reshape(1, -1)
     k = min(top_k, int(index.ntotal))
     D, I = index.search(q_emb, k)
     return [I[0][i] for i in range(k)], D[0].tolist()
 
 # ----------------------------
-# Generator (safe pipeline)
+# Generator
 # ----------------------------
 @st.cache_resource(show_spinner=True)
 def load_generator(model_name=GEN_MODEL_NAME):
-    # Use seq2seq pipeline (flan-t5)
     device = 0 if torch.cuda.is_available() else -1
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    # ensure pad token exists
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
@@ -217,7 +203,7 @@ def load_generator(model_name=GEN_MODEL_NAME):
     return gen, tokenizer
 
 # ----------------------------
-# Clean NCERT noisy headers
+# Clean NCERT text
 # ----------------------------
 def clean_ncert_text(text: str) -> str:
     patterns = [
@@ -233,25 +219,20 @@ def clean_ncert_text(text: str) -> str:
     return text
 
 # ----------------------------
-# Question extraction + validation
+# Extract questions from generated text
 # ----------------------------
 QUESTION_START = r"(What|Why|How|Explain|Describe|State|Define|Discuss|Examine|Evaluate|Analyse|Analyze|Compare|Differentiate)\b"
 
 def extract_questions_from_text(text: str, needed: int):
-    # find sentences that start with interrogatives and end with '?'
-    # fallback strategy: split into sentences and validate
     candidates = []
-    # first try direct regex matches
     regex = re.compile(QUESTION_START + r".*?\?", flags=re.I | re.S)
-    matches = regex.findall(text)
-    # Actually re.findall with groups returns tuples; use finditer
     for m in regex.finditer(text):
         q = m.group(0).strip()
         if len(q.split()) > 3:
             candidates.append(q)
         if len(candidates) >= needed:
             break
-    # fallback: sentence-split and check ending
+    # fallback
     if len(candidates) < needed:
         sents = re.split(r'(?<=[\.\?\!])\s+', text)
         for s in sents:
@@ -261,7 +242,6 @@ def extract_questions_from_text(text: str, needed: int):
                     candidates.append(s_clean)
             if len(candidates) >= needed:
                 break
-    # dedupe preserve order
     seen = set()
     final = []
     for q in candidates:
@@ -273,16 +253,13 @@ def extract_questions_from_text(text: str, needed: int):
     return final
 
 # ----------------------------
-# Generate N distinct questions by prompting for ONE question at a time
+# Generate subjective questions
 # ----------------------------
-def generate_n_distinct_questions(gen_pipeline, tokenizer, topic, context_text, n):
+def generate_n_subjective_questions(gen_pipeline, tokenizer, topic, context_text, n):
     max_new_tokens = 128
-    # available input capacity for model: tokenizer.model_max_length
     max_input = getattr(tokenizer, "model_max_length", 512)
-    # reserve some tokens for generation
     reserve = 64
-    max_context_chars = int((max_input - reserve) * 1.0)  # rough char limit (safe)
-    # truncate context (simple approach)
+    max_context_chars = int(max_input - reserve)
     if len(context_text) > max_context_chars:
         context_text = context_text[:max_context_chars]
 
@@ -291,46 +268,38 @@ def generate_n_distinct_questions(gen_pipeline, tokenizer, topic, context_text, 
     max_tries = n * 8
 
     while len(questions) < n and tries < max_tries:
-        # build strict prompt for ONE question
         prompt = (
             "You are an expert NCERT/UPSC-style question setter. "
-            "Using ONLY the NCERT context provided, generate ONE exam-quality question.\n"
+            "Using ONLY the NCERT context provided, generate ONE **subjective/descriptive** exam-quality question.\n"
             "Strict rules:\n"
-            "- Use only facts present in the context (do not invent facts).\n"
-            "- Begin with an interrogative or command word (What/Why/How/Explain/Describe/State/Define/Discuss/Examine/Evaluate/Analyse/Compare).\n"
-            "- End the question with a single question mark '?' and make it complete and specific.\n"
-            "- Avoid placeholders like 'the passage' or 'the text'. Use neutral framing such as 'in the context of <topic>' if needed.\n\n"
+            "- Use only facts present in the context.\n"
+            "- Begin with an interrogative or command word.\n"
+            "- Make it suitable for a descriptive answer.\n"
+            "- End the question with '?' and make it complete.\n"
             f"Topic: {topic}\n\n"
             f"Context:\n{context_text}\n\n"
             "Output exactly one question and nothing else:\n"
         )
-
-        # call generator: seq2seq pipeline (text2text)
         try:
             out = gen_pipeline(prompt, max_new_tokens=max_new_tokens, do_sample=True, top_p=0.9, temperature=0.6)[0]["generated_text"]
         except Exception as e:
             st.warning(f"Generation call failed: {e}")
             break
 
-        # clean and extract questions
         extracted = extract_questions_from_text(out, 1)
         if extracted:
-            q = extracted[0]
-            # small cleaning rules
-            q = q.replace("passage", "text")
-            q = re.sub(r'\s+', ' ', q).strip()
+            q = extracted[0].replace("passage", "text").strip()
             if q.endswith('?') and len(q.split()) > 4 and q not in questions:
                 questions.append(q)
         tries += 1
 
-    # if not enough, pad with helpful message
     while len(questions) < n:
         questions.append("Model could not generate a distinct question. Try reducing N or simplifying topic.")
 
     return questions
 
 # ----------------------------
-# Orchestration: UI flow
+# Streamlit UI
 # ----------------------------
 with st.sidebar:
     st.header("Settings")
@@ -355,7 +324,7 @@ with col2:
                 pass
         st.experimental_rerun()
 
-# obtain ZIP
+# Obtain ZIP
 if uploaded:
     with open(ZIP_PATH, "wb") as fo:
         fo.write(uploaded.getbuffer())
@@ -365,74 +334,73 @@ elif use_drive:
         st.error("Failed to download ZIP. Upload manually or check FILE_ID.")
         st.stop()
 else:
-    st.info("Upload a ZIP file or enable auto-download from Drive in the sidebar.")
+    st.info("Upload a ZIP file or enable auto-download from Drive.")
     st.stop()
 
-# extract
+# Extract
 with st.spinner("Extracting ZIP..."):
     extract_zip_with_nested(ZIP_PATH, EXTRACT_DIR)
 st.success("Extraction done.")
 
-# list PDFs
-all_pdfs = list_all_pdfs(EXTRACT_DIR)
+# List PDFs
+all_pdfs = [str(p) for p in Path(EXTRACT_DIR).rglob("*.pdf")]
 st.info(f"Total PDFs discovered: {len(all_pdfs)}")
 if len(all_pdfs) == 0:
     st.error("No PDFs found in extracted folder.")
     st.stop()
 
-# select subject
+# Select subject
 subject = st.selectbox("Select Subject", SUBJECTS)
 docs = load_docs_by_subject(EXTRACT_DIR, subject)
 st.info(f"Loaded {len(docs)} PDFs for subject '{subject}'")
 if not docs:
-    st.warning(f"No readable PDFs found for {subject}. Check folder naming or upload subject PDFs.")
+    st.warning(f"No readable PDFs found for {subject}.")
     st.stop()
 
-# chunk
+# Chunk documents
 with st.spinner("Chunking documents..."):
     all_chunks = chunk_documents(docs)
 st.info(f"Total chunks created: {len(all_chunks)}")
 if not all_chunks:
-    st.error("No chunks created (documents may be too short).")
+    st.error("No chunks created.")
     st.stop()
 
-# build FAISS
+# Build FAISS index
 with st.spinner("Building FAISS index..."):
     embed_model, index, metadata = build_faiss(all_chunks)
 st.success("FAISS index ready.")
 
-# load generator
+# Load generator
 with st.spinner("Loading generator model..."):
     generator_pipeline, tokenizer = load_generator(GEN_MODEL_NAME)
 st.success("Generator ready.")
 
-# user inputs
-st.subheader("Generate NCERT Questions")
-topic = st.text_input("Enter chapter/topic (example: 'Constitution', 'Electricity')").strip()
+# User inputs
+st.subheader("Generate NCERT Subjective Questions")
+topic = st.text_input("Enter chapter/topic (example: 'Constitution')").strip()
 num_q = st.number_input("Number of questions to generate", min_value=1, max_value=20, value=5)
 
 if st.button("Generate Questions"):
     if not topic:
         st.warning("Please enter a topic.")
     else:
-        # retrieve top-k
+        # Retrieve top-k chunks
         ids, _ = retrieve_topk(index, embed_model, topic, top_k=TOP_K)
         retrieved = [metadata[i] for i in ids if i < len(metadata)]
         if not retrieved:
-            st.warning("No relevant chunks found for that topic. Try a broader keyword.")
+            st.warning("No relevant chunks found. Try a broader keyword.")
         else:
             st.markdown("### Sources (top chunks):")
             context_parts = []
             for r in retrieved:
                 st.write(f"- {r['doc_id']} — {r['chunk_id']}")
                 st.write(r['text'][:600] + "...")
-                context_parts.append(r['text'])
-            # join limited context
+                context_parts.append(r["text"])
             context_text = "\n\n".join(context_parts)
             context_text = clean_ncert_text(context_text)
 
-            with st.spinner("Generating distinct questions (one-by-one)..."):
-                questions = generate_n_distinct_questions(generator_pipeline, tokenizer, topic, context_text, int(num_q))
+            with st.spinner("Generating subjective questions..."):
+                questions = generate_n_subjective_questions(generator_pipeline, tokenizer, topic, context_text, int(num_q))
 
             st.success(f"Generated {len(questions)} questions")
             for i, q in enumerate(questions, 1):
