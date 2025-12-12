@@ -4,6 +4,7 @@ import zipfile
 import shutil
 from pathlib import Path
 import re
+import random
 
 import streamlit as st
 import gdown
@@ -21,11 +22,11 @@ EXTRACT_DIR = "ncert_extracted"
 CHUNK_SIZE = 1200
 CHUNK_OVERLAP = 200
 EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
-TOP_K = 4
+TOP_K = 5
 SUBJECTS = ["Polity", "Sociology", "Psychology", "Business Studies", "Economics"]
 
 st.set_page_config(page_title="NCERT → UPSC Question Generator", layout="wide")
-st.title("NCERT → UPSC Question Generator (Offline, Rule-Based)")
+st.title("NCERT → UPSC Subjective Question Generator (Offline)")
 
 # ----------------------------
 # Utilities
@@ -50,25 +51,15 @@ def extract_zip_with_nested(src_zip_path: str, dest_dir: str):
         st.error(f"Zip extraction failed: {e}")
         return []
     # Handle nested zips
-    found_any = True
-    while found_any:
-        found_any = False
-        for root, _, files in os.walk(dest_dir):
-            for f in list(files):
-                if f.lower().endswith(".zip"):
-                    found_any = True
-                    nested_zip = os.path.join(root, f)
-                    folder_target = os.path.join(root, Path(f).stem)
-                    os.makedirs(folder_target, exist_ok=True)
-                    try:
-                        with zipfile.ZipFile(nested_zip, "r") as nz:
-                            nz.extractall(folder_target)
-                    except Exception:
-                        pass
-                    try:
-                        os.remove(nested_zip)
-                    except Exception:
-                        pass
+    for root, _, files in os.walk(dest_dir):
+        for f in files:
+            if f.lower().endswith(".zip"):
+                nested_zip = os.path.join(root, f)
+                folder_target = os.path.join(root, Path(f).stem)
+                os.makedirs(folder_target, exist_ok=True)
+                with zipfile.ZipFile(nested_zip, "r") as nz:
+                    nz.extractall(folder_target)
+                os.remove(nested_zip)
     return sorted(os.listdir(dest_dir))
 
 def read_pdf(path: str) -> str:
@@ -78,7 +69,7 @@ def read_pdf(path: str) -> str:
         for p in r.pages:
             t = p.extract_text()
             if t:
-                text += t + "\n"
+                text += t + " "
         return text
     except:
         return ""
@@ -137,22 +128,28 @@ def retrieve_chunks(query, index, model, chunks, top_k=TOP_K):
     return results
 
 # ----------------------------
-# Rule-based Question Generation
+# Subjective Question Generation
 # ----------------------------
 INTERROGATIVES = ["Explain", "Describe", "Discuss", "State", "Define", "Analyse", "Examine", "Why", "How", "Compare"]
 
+def split_into_sentences(text):
+    return re.split(r'(?<=[\.\?\!])\s+', text)
+
 def generate_subjective_questions(text_chunks, n=5):
-    questions = []
+    candidate_sentences = []
+    # collect candidate sentences
     for chunk in text_chunks:
-        sentences = re.split(r'(?<=[\.\?])\s+', chunk)
+        sentences = split_into_sentences(chunk)
         for s in sentences:
-            if len(s.split()) > 10:
-                q_start = INTERROGATIVES[np.random.randint(len(INTERROGATIVES))]
-                question = f"{q_start} the following: {s.strip()} ?"
-                if question not in questions:
-                    questions.append(question)
-            if len(questions) >= n:
-                break
+            if len(s.split()) > 10 and not s.strip().endswith(":"):
+                candidate_sentences.append(s.strip())
+    # sort randomly to vary questions
+    random.shuffle(candidate_sentences)
+    questions = []
+    for sent in candidate_sentences[:n*3]:  # extra for filtering
+        inter = random.choice(INTERROGATIVES)
+        question = f"{inter} the concept: {sent}"
+        questions.append(question)
         if len(questions) >= n:
             break
     return questions
