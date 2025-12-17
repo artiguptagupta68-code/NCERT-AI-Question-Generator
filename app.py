@@ -1,158 +1,73 @@
-
-import os
-import zipfile
-import random
-import re
-from pathlib import Path
-import tempfile
-
-import streamlit as st
-import gdown
-from pypdf import PdfReader
+#writefile realistic_upsc_mcq_pdfs.py
 from fpdf import FPDF
-
-# ----------------------------
-# CONFIG
-# ----------------------------
-FILE_ID = "1gdiCsGOeIyaDlJ--9qon8VTya3dbjr6G"   # NCERT ZIP
-ZIP_PATH = "ncert.zip"
-EXTRACT_DIR = "ncert_extracted"
-
-# app.py
-# --------------------------------------------------
-# NCERT-aligned + Realistic UPSC Prelims MCQ Generator
-# NO PDF READING | NO OCR | ZERO FAILURES
-# --------------------------------------------------
-
-import streamlit as st
 import random
+import os
 
 # ----------------------------
 # CONFIG
 # ----------------------------
-st.set_page_config(
-    page_title="NCERT + UPSC MCQ Generator",
-    layout="wide"
-)
+NUM_QUESTIONS = 500
+OUTPUT_DIR = "upsc_realistic_mcq_pdfs"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-st.title("📘 NCERT-Aligned Realistic UPSC MCQ Generator")
-st.caption("Prelims 2024 level | NCERT syllabus mapped | Coaching-style questions")
-
-# ----------------------------
-# SUBJECT → NCERT KEYWORDS
-# ----------------------------
+# Subjects and keywords for generating realistic MCQs
 SUBJECTS = {
-    "Polity": [
-        "Constitution", "Fundamental Rights", "Directive Principles",
-        "Parliament", "Judiciary", "Emergency", "Federalism",
-        "Separation of Powers", "Writs", "Amendment Procedure"
-    ],
-    "Economics": [
-        "GDP", "Inflation", "Fiscal Policy", "Monetary Policy",
-        "Poverty", "Unemployment", "Economic Growth",
-        "Planning", "Budget", "Taxation"
-    ],
-    "Sociology": [
-        "Society", "Caste", "Class", "Gender",
-        "Social Change", "Social Mobility",
-        "Institutions", "Family", "Religion"
-    ],
-    "Psychology": [
-        "Behavior", "Learning", "Memory", "Motivation",
-        "Emotion", "Personality", "Intelligence",
-        "Cognition", "Stress"
-    ],
-    "Business Studies": [
-        "Management", "Planning", "Organising",
-        "Leadership", "Marketing", "Finance",
-        "Human Resource Management", "Controlling"
-    ]
+    "Polity": ["constitution", "parliament", "judiciary", "rights", "emergency", "fundamental duties", "federalism"],
+    "Sociology": ["society", "caste", "class", "gender", "social change", "social mobility", "community"],
+    "Psychology": ["behavior", "motivation", "emotion", "learning", "memory", "personality", "cognition"],
+    "Business Studies": ["management", "marketing", "planning", "leadership", "finance", "strategy", "HRM"],
+    "Economics": ["GDP", "inflation", "growth", "development", "poverty", "unemployment", "fiscal policy"]
 }
 
 # ----------------------------
-# UPSC-STYLE MCQ TEMPLATES
+# FUNCTIONS
 # ----------------------------
-MCQ_TEMPLATES = [
-    "Which of the following best describes {k}?",
-    "With reference to {k}, consider the following statements:",
-    "The concept of {k} is most closely associated with:",
-    "In the context of Indian polity/economy/society, {k} refers to:",
-    "{k} is important because it:"
-]
-
-# ----------------------------
-# DISTRACTOR LOGIC (VERY IMPORTANT)
-# ----------------------------
-def generate_options(keywords, correct):
-    distractors = random.sample(
-        [k for k in keywords if k != correct],
-        min(3, len(keywords) - 1)
-    )
-    options = distractors + [correct]
-    random.shuffle(options)
-    answer_index = options.index(correct)
-    return options, answer_index
-
-# ----------------------------
-# MCQ GENERATOR
-# ----------------------------
-def generate_mcqs(subject, topic, num_q):
+def generate_options(subject, correct_keyword):
+    """Generate 4 options with 1 correct and 3 distractors."""
     keywords = SUBJECTS[subject]
-    mcqs = []
+    options = [correct_keyword]
+    distractors = random.sample([k for k in keywords if k != correct_keyword], 3)
+    options.extend(distractors)
+    random.shuffle(options)
+    correct_index = options.index(correct_keyword)
+    return options, correct_index
 
-    for i in range(1, num_q + 1):
-        correct = random.choice(keywords)
-        template = random.choice(MCQ_TEMPLATES)
+def generate_mcq(subject, qnum):
+    """Generate one UPSC-style MCQ."""
+    correct_keyword = random.choice(SUBJECTS[subject])
+    question = f"Q{qnum}. Which of the following best describes '{correct_keyword}' in {subject}?"
+    options, answer_idx = generate_options(subject, correct_keyword)
+    return question, options, answer_idx
 
-        question = f"Q{i}. " + template.format(k=correct)
-        if "statements" in question:
-            question += "\n1. It is mentioned in NCERT texts.\n2. It has relevance for Indian context.\nSelect the correct answer using the code below."
+def create_pdf(subject):
+    """Create PDF file with MCQs for a subject."""
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
 
-        options, answer_idx = generate_options(keywords, correct)
+    # Use built-in Arial font (no TTF required)
+    pdf.set_font("Arial", 'B', 16)
+    pdf.cell(0, 10, f"UPSC-style Realistic MCQs - {subject}", ln=True, align="C")
+    pdf.ln(10)
 
-        mcqs.append({
-            "question": question,
-            "options": options,
-            "answer": answer_idx
-        })
+    pdf.set_font("Arial", '', 12)
+    for i in range(1, NUM_QUESTIONS + 1):
+        question, options, answer_idx = generate_mcq(subject, i)
+        pdf.multi_cell(0, 8, question)
+        for idx, opt in enumerate(options):
+            pdf.cell(0, 8, f"{chr(97 + idx)}) {opt}", ln=True)
+        pdf.cell(0, 8, f"Answer: {chr(97 + answer_idx)}) {options[answer_idx]}", ln=True)
+        pdf.ln(2)
 
-    return mcqs
-
-# ----------------------------
-# UI CONTROLS
-# ----------------------------
-with st.sidebar:
-    st.header("⚙️ Settings")
-    subject = st.selectbox("Select Subject", list(SUBJECTS.keys()))
-    topic = st.text_input("Enter Chapter / Topic (NCERT)")
-    num_q = st.slider("Number of MCQs", 5, 50, 10)
-    show_answers = st.checkbox("Show answers", value=True)
-
-st.divider()
-
-# ----------------------------
-# GENERATE BUTTON
-# ----------------------------
-if st.button("🚀 Generate UPSC-Style MCQs"):
-    if not topic.strip():
-        st.warning("Please enter a topic or chapter name.")
-        st.stop()
-
-    mcqs = generate_mcqs(subject, topic, num_q)
-
-    st.success(f"Generated {num_q} NCERT-aligned UPSC Prelims MCQs")
-
-    for mcq in mcqs:
-        st.markdown(f"**{mcq['question']}**")
-        for idx, opt in enumerate(mcq["options"]):
-            st.write(f"{chr(97 + idx)}) {opt}")
-        if show_answers:
-            st.write(f"✅ **Answer:** {chr(97 + mcq['answer'])}")
-        st.write("---")
+    file_path = os.path.join(OUTPUT_DIR, f"{subject}_mcqs.pdf")
+    pdf.output(file_path)
+    print(f"{subject} PDF generated: {file_path}")
 
 # ----------------------------
-# FOOTER
+# MAIN
 # ----------------------------
-st.caption(
-    "✔ NCERT syllabus based | ✔ UPSC Prelims logic | ✔ No OCR | ✔ No PDF dependency"
-)
+if __name__ == "__main__":
+    for subject in SUBJECTS:
+        create_pdf(subject)
+    print("✅ All 5 UPSC-style realistic MCQ PDFs generated successfully.")
+
