@@ -1,2 +1,12 @@
 streamlit
-fpdf
+gdown
+pypdf
+sentence-transformers
+faiss-cpu
+transformers
+torch
+numpy
+pdf2image
+
+PyPDF2
+FPDF
