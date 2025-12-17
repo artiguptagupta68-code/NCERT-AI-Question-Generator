@@ -88,15 +88,26 @@ def clean_text(text):
 # =========================
 # LOAD ALL TEXTS
 # =========================
-@st.cache_data
+
 def load_all_texts():
     texts = []
     for pdf in Path(EXTRACT_DIR).rglob("*.pdf"):
-        raw = read_pdf(str(pdf))
-        cleaned = clean_text(raw)
-        if len(cleaned.split()) > 50:
-            texts.append(cleaned)
+        try:
+            reader = PdfReader(str(pdf))
+            text = ""
+            for page in reader.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + "\n"
+            text = clean_text(text)
+            if len(text.strip()) > 20:  # lower threshold to include more text
+                texts.append(text)
+        except Exception as e:
+            st.warning(f"Failed to read PDF {pdf.name}: {e}")
     return texts
+all_pdfs = list(Path(EXTRACT_DIR).rglob("*.pdf"))
+st.text(f"Total PDFs found: {len(all_pdfs)}")
+
 
 def chunk_text(text):
     paras = re.split(r"\n\s*\n", text)
