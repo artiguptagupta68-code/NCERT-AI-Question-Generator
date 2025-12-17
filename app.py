@@ -85,11 +85,24 @@ def topic_match(chunk, topic):
 # =========================
 def load_all_texts():
     texts = []
-    for pdf in Path(EXTRACT_DIR).rglob("*.pdf"):
-        t = clean_text(read_pdf(str(pdf)))
-        if len(t.split()) > 150:
-            texts.append(t)
+    for root, dirs, files in os.walk(EXTRACT_DIR):
+        for file in files:
+            if file.lower().endswith(".pdf"):
+                path = os.path.join(root, file)
+                try:
+                    reader = PdfReader(path)
+                    text = ""
+                    for page in reader.pages:
+                        page_text = page.extract_text()
+                        if page_text:
+                            text += page_text + "\n"
+                    text = clean_text(text)
+                    if len(text.split()) > 50:
+                        texts.append(text)
+                except Exception:
+                    pass
     return texts
+
 
 def chunk_text(text):
     paras = re.split(r"\n\s*\n", text)
