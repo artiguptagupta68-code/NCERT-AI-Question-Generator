@@ -1,73 +1,72 @@
-#writefile realistic_upsc_mcq_pdfs.py
-from fpdf import FPDF
+import streamlit as st
 import random
-import os
 
-# ----------------------------
-# CONFIG
-# ----------------------------
-NUM_QUESTIONS = 500
-OUTPUT_DIR = "upsc_realistic_mcq_pdfs"
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+st.set_page_config(page_title="NCERT + UPSC MCQ Generator", layout="wide")
 
-# Subjects and keywords for generating realistic MCQs
+st.title("📘 NCERT-Aligned UPSC Prelims MCQ Generator")
+st.caption("Prelims 2024 level | NCERT-based | Coaching-style questions")
+
 SUBJECTS = {
-    "Polity": ["constitution", "parliament", "judiciary", "rights", "emergency", "fundamental duties", "federalism"],
-    "Sociology": ["society", "caste", "class", "gender", "social change", "social mobility", "community"],
-    "Psychology": ["behavior", "motivation", "emotion", "learning", "memory", "personality", "cognition"],
-    "Business Studies": ["management", "marketing", "planning", "leadership", "finance", "strategy", "HRM"],
-    "Economics": ["GDP", "inflation", "growth", "development", "poverty", "unemployment", "fiscal policy"]
+    "Polity": [
+        "Constitution", "Fundamental Rights", "Directive Principles",
+        "Parliament", "Judiciary", "Emergency", "Federalism",
+        "Writs", "Amendment Procedure"
+    ],
+    "Economics": [
+        "GDP", "Inflation", "Fiscal Policy", "Monetary Policy",
+        "Poverty", "Unemployment", "Budget", "Taxation"
+    ],
+    "Sociology": [
+        "Society", "Caste", "Class", "Gender",
+        "Social Change", "Institutions", "Family"
+    ],
+    "Psychology": [
+        "Learning", "Memory", "Motivation",
+        "Emotion", "Personality", "Stress"
+    ],
+    "Business Studies": [
+        "Management", "Planning", "Organising",
+        "Leadership", "Marketing", "Finance", "HRM"
+    ]
 }
 
-# ----------------------------
-# FUNCTIONS
-# ----------------------------
-def generate_options(subject, correct_keyword):
-    """Generate 4 options with 1 correct and 3 distractors."""
-    keywords = SUBJECTS[subject]
-    options = [correct_keyword]
-    distractors = random.sample([k for k in keywords if k != correct_keyword], 3)
-    options.extend(distractors)
+QUESTION_TEMPLATES = [
+    "Which of the following best explains {k}?",
+    "With reference to {k}, consider the following statements:",
+    "{k} is important in the Indian context because it:",
+    "The concept of {k} is associated with:"
+]
+
+def generate_options(keywords, correct):
+    distractors = random.sample([k for k in keywords if k != correct], 3)
+    options = distractors + [correct]
     random.shuffle(options)
-    correct_index = options.index(correct_keyword)
-    return options, correct_index
+    return options, options.index(correct)
 
-def generate_mcq(subject, qnum):
-    """Generate one UPSC-style MCQ."""
-    correct_keyword = random.choice(SUBJECTS[subject])
-    question = f"Q{qnum}. Which of the following best describes '{correct_keyword}' in {subject}?"
-    options, answer_idx = generate_options(subject, correct_keyword)
-    return question, options, answer_idx
+def generate_mcqs(subject, n):
+    keywords = SUBJECTS[subject]
+    mcqs = []
 
-def create_pdf(subject):
-    """Create PDF file with MCQs for a subject."""
-    pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.add_page()
+    for i in range(1, n + 1):
+        correct = random.choice(keywords)
+        question = f"Q{i}. " + random.choice(QUESTION_TEMPLATES).format(k=correct)
+        options, ans = generate_options(keywords, correct)
 
-    # Use built-in Arial font (no TTF required)
-    pdf.set_font("Arial", 'B', 16)
-    pdf.cell(0, 10, f"UPSC-style Realistic MCQs - {subject}", ln=True, align="C")
-    pdf.ln(10)
+        mcqs.append((question, options, ans))
 
-    pdf.set_font("Arial", '', 12)
-    for i in range(1, NUM_QUESTIONS + 1):
-        question, options, answer_idx = generate_mcq(subject, i)
-        pdf.multi_cell(0, 8, question)
-        for idx, opt in enumerate(options):
-            pdf.cell(0, 8, f"{chr(97 + idx)}) {opt}", ln=True)
-        pdf.cell(0, 8, f"Answer: {chr(97 + answer_idx)}) {options[answer_idx]}", ln=True)
-        pdf.ln(2)
+    return mcqs
 
-    file_path = os.path.join(OUTPUT_DIR, f"{subject}_mcqs.pdf")
-    pdf.output(file_path)
-    print(f"{subject} PDF generated: {file_path}")
+with st.sidebar:
+    subject = st.selectbox("Select Subject", SUBJECTS.keys())
+    num_q = st.slider("Number of MCQs", 5, 50, 10)
+    show_ans = st.checkbox("Show Answers", True)
 
-# ----------------------------
-# MAIN
-# ----------------------------
-if __name__ == "__main__":
-    for subject in SUBJECTS:
-        create_pdf(subject)
-    print("✅ All 5 UPSC-style realistic MCQ PDFs generated successfully.")
-
+if st.button("Generate MCQs"):
+    mcqs = generate_mcqs(subject, num_q)
+    for q, opts, ans in mcqs:
+        st.markdown(f"**{q}**")
+        for i, o in enumerate(opts):
+            st.write(f"{chr(97+i)}) {o}")
+        if show_ans:
+            st.write(f"✅ **Answer:** {chr(97+ans)}")
+        st.divider()
