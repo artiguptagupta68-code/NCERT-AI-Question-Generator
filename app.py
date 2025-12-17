@@ -62,12 +62,22 @@ def extract_zip():
         with zipfile.ZipFile(ZIP_PATH, "r") as z:
             z.extractall(EXTRACT_DIR)
 
-def read_pdf(path):
-    try:
-        reader = PdfReader(path)
-        return " ".join(page.extract_text() or "" for page in reader.pages)
-    except Exception:
-        return ""
+pdf_count = 0
+text_pages = 0
+
+for root, _, files in os.walk(EXTRACT_DIR):
+    for file in files:
+        if file.lower().endswith(".pdf"):
+            pdf_count += 1
+            path = os.path.join(root, file)
+            reader = PdfReader(path)
+            for page in reader.pages:
+                if page.extract_text():
+                    text_pages += 1
+
+st.write("Total PDFs found:", pdf_count)
+st.write("Pages with extractable text:", text_pages)
+
 
 def clean_text(text):
     text = re.sub(r"(instructions|time allowed|marks|copyright).*", " ", text, flags=re.I)
