@@ -95,9 +95,12 @@ def is_valid_question(q):
 # MCQ GENERATION
 # =========================
 
-def generate_mcqs_contextual(chunks, topic, n, level, subject):
+# =========================
+# CONTEXTUAL MCQ GENERATION
+# =========================
+def generate_mcqs_exam_ready(chunks, topic, n, level, subject):
     """
-    Generate meaningful UPSC/NCERT-style MCQs from text chunks.
+    Generate meaningful MCQs from text chunks.
     - chunks: semantically chunked text
     - topic: topic string
     - n: number of questions
@@ -105,54 +108,58 @@ def generate_mcqs_contextual(chunks, topic, n, level, subject):
     - subject: subject context
     """
     mcqs = []
-    used_questions = set()
-    keywords = [k.lower() for k in SUBJECT_KEYWORDS.get(subject, [])]
-    topic_lower = topic.lower()
+    used_sentences = set()
 
+    keywords = [k.lower() for k in SUBJECT_KEYWORDS.get(subject, [])]
     random.shuffle(chunks)
 
     for chunk in chunks:
-        sentences = [s.strip() for s in re.split(r'(?<=[.?!])\s+', chunk) if len(s.split()) > 5]
-        relevant_sentences = [s for s in sentences if topic_lower in s.lower() or any(k in s.lower() for k in keywords)]
-        if not relevant_sentences:
+        sentences = [s.strip() for s in re.split(r'(?<=[.?!])\s+', chunk) if s.strip()]
+        if not sentences:
             continue
 
-        for base_sentence in relevant_sentences:
+        for _ in range(n):
             if len(mcqs) >= n:
                 break
 
-            # NCERT-style
+            # Pick main sentence related to topic as correct answer
+            correct_candidates = [s for s in sentences if topic.lower() in s.lower() and s not in used_sentences]
+            if not correct_candidates:
+                correct_candidates = [s for s in sentences if s not in used_sentences]
+            if not correct_candidates:
+                continue
+
+            correct = random.choice(correct_candidates)
+            used_sentences.add(correct)
+
+            # Distractors: other sentences from chunk not correct
+            distractors = [s for s in sentences if s != correct]
+            distractors = random.sample(distractors, min(3, len(distractors)))
+            while len(distractors) < 3:
+                distractors.append("Incorrect statement")
+
+            options = [correct] + distractors
+            random.shuffle(options)
+            
             if level == "NCERT Level":
-                question = f"Which of the following statements about {topic} is correct?"
-                correct_answer = base_sentence
-                distractors = [s for s in sentences if s != correct_answer]
-                distractors = random.sample(distractors, min(3, len(distractors)))
-                while len(distractors) < 3:
-                    distractors.append("Incorrect statement")
+                answer_index = options.index(correct)
+            else:  # UPSC: multiple correct (1-2)
+                correct_multi = [correct]
+                more_correct = [s for s in sentences if s != correct and topic.lower() in s.lower()]
+                if more_correct:
+                    correct_multi.append(random.choice(more_correct))
+                answer_index = [options.index(c) for c in correct_multi if c in options]
 
-                options = [correct_answer] + distractors
-                random.shuffle(options)
-                answer_index = options.index(correct_answer)
-                mcqs.append({"question": question, "options": options, "answer": answer_index})
-
-            # UPSC-style (multi-answer possible)
-            elif level == "UPSC Level":
-                question = f"Consider the following statements about {topic} and select the correct option(s):"
-                correct_sentences = random.sample(relevant_sentences, min(2, len(relevant_sentences)))
-                distractors = [s for s in sentences if s not in correct_sentences]
-                distractors = random.sample(distractors, min(2, len(distractors)))
-                while len(distractors) < 2:
-                    distractors.append("Incorrect statement")
-
-                options = correct_sentences + distractors
-                random.shuffle(options)
-                correct_indexes = [options.index(c) for c in correct_sentences]
-                mcqs.append({"question": question, "options": options, "answer": correct_indexes})
+            mcqs.append({
+                "question": f"Consider the following statements about {topic} and select the correct option(s):",
+                "options": options,
+                "answer": answer_index
+            })
 
         if len(mcqs) >= n:
             break
 
-    # Fallback
+    # Fallback if not enough questions
     while len(mcqs) < n:
         mcqs.append({
             "question": f"What is {topic}?",
@@ -163,40 +170,8 @@ def generate_mcqs_contextual(chunks, topic, n, level, subject):
     return mcqs
 
 
-
-
 # =========================
-# LOAD TEXTS
-# =========================
-def load_all_texts():
-    texts = []
-    for pdf in Path(EXTRACT_DIR).rglob("*.pdf"):
-        t = clean_text(read_pdf(str(pdf)))
-        if len(t.split()) > 50:
-            texts.append(t)
-    return texts
-
-# =========================
-# SIDEBAR
-# =========================
-with st.sidebar:
-    if st.button("📥 Load NCERT Content"):
-        download_zip()
-        extract_zip()
-        st.success("NCERT content loaded")
-
-# =========================
-# UI INPUT
-# =========================
-subject = st.selectbox("Select Subject", SUBJECTS)
-topic = st.text_input("Enter Topic / Chapter (e.g. Constitution, Federalism)")
-num_q = st.number_input("Number of Questions", 1, 10, 5)
-level = st.radio("Select Level", ["NCERT Level", "UPSC Level"])
-
-tab1, tab2 = st.tabs(["Subjective Questions", "MCQs"])
-
-# =========================
-# GENERATE MCQs
+# DISPLAY MCQs
 # =========================
 with tab2:
     if st.button("Generate MCQs"):
@@ -216,14 +191,19 @@ with tab2:
         if len(relevant) < 5:
             relevant = chunks[:15]
 
-        mcqs = generate_mcqs_contextual(relevant, topic, num_q, level, subject)
-        st.success(f"Generated {len(mcqs)} UPSC-style MCQs")
+        mcqs = generate_mcqs_exam_ready(relevant, topic, num_q, level, subject)
+        st.success(f"Generated {len(mcqs)} MCQs ({level})")
 
         for i, mcq in enumerate(mcqs, 1):
             st.write(f"**Q{i}. {mcq['question']}**")
             for idx, opt in enumerate(mcq["options"]):
                 st.write(f"{chr(97+idx)}) {opt}")
 
-            answers = ", ".join([chr(97 + a) for a in mcq['answer']])
-            st.write(f"✅ **Answer(s):** {answers}")
+            # Correct answer(s)
+            if isinstance(mcq['answer'], list):
+                answers = ", ".join([chr(97 + a) for a in mcq['answer']])
+                st.write(f"✅ **Answer(s):** {answers}")
+            else:
+                st.write(f"✅ **Answer:** {chr(97 + mcq['answer'])}")
+            
             st.write("---")
