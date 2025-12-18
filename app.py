@@ -1,4 +1,4 @@
-# NCERT & UPSC Context-aware MCQ Generator
+# NCERT & UPSC Context-aware Question Generator
 import os, zipfile, re, random
 from pathlib import Path
 import streamlit as st
@@ -25,8 +25,8 @@ SUBJECT_KEYWORDS = {
 # =========================
 # STREAMLIT SETUP
 # =========================
-st.set_page_config(page_title="NCERT & UPSC MCQ Generator", layout="wide")
-st.title("📘 NCERT & UPSC MCQ Generator")
+st.set_page_config(page_title="NCERT & UPSC Question Generator", layout="wide")
+st.title("📘 NCERT & UPSC Question Generator")
 
 # =========================
 # UTILITIES
@@ -65,6 +65,14 @@ def clean_text(text):
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 
+def load_all_texts():
+    texts = []
+    for pdf in Path(EXTRACT_DIR).rglob("*.pdf"):
+        t = clean_text(read_pdf(str(pdf)))
+        if len(t.split()) > 50:
+            texts.append(t)
+    return texts
+
 # =========================
 # SEMANTIC CHUNKING
 # =========================
@@ -77,39 +85,42 @@ def semantic_chunk(text):
             chunks.append(chunk)
     return chunks
 
-# =========================
-# BOOLEAN FILTER
-# =========================
 def boolean_filter(chunks, topic, subject):
     topic = topic.lower()
-    keys = SUBJECT_KEYWORDS[subject]
+    keys = SUBJECT_KEYWORDS.get(subject, [])
     return [c for c in chunks if topic in c.lower() or any(k in c.lower() for k in keys)]
 
 # =========================
-# VALIDATION
+# SUBJECTIVE QUESTIONS
 # =========================
-def is_valid_question(q):
-    return len(q.split()) > 5
+GENERIC_PATTERNS = [
+    "Explain the concept of {c}.",
+    "Describe the importance of {c}.",
+    "Discuss the role of {c} in society.",
+    "Why is {c} significant?"
+]
+
+def generate_subjective_questions(chunks, topic, n):
+    questions = []
+    seen = set()
+    random.shuffle(chunks)
+    for chunk in chunks:
+        q = random.choice(GENERIC_PATTERNS).format(c=topic)
+        if q not in seen:
+            questions.append(q)
+            seen.add(q)
+        if len(questions) >= n:
+            break
+    while len(questions) < n:
+        questions.append(f"Explain the concept of {topic}.")
+    return questions
 
 # =========================
 # MCQ GENERATION
 # =========================
-
-# =========================
-# CONTEXTUAL MCQ GENERATION
-# =========================
 def generate_mcqs_exam_ready(chunks, topic, n, level, subject):
-    """
-    Generate meaningful MCQs from text chunks.
-    - chunks: semantically chunked text
-    - topic: topic string
-    - n: number of questions
-    - level: "NCERT Level" or "UPSC Level"
-    - subject: subject context
-    """
     mcqs = []
     used_sentences = set()
-
     keywords = [k.lower() for k in SUBJECT_KEYWORDS.get(subject, [])]
     random.shuffle(chunks)
 
@@ -122,7 +133,7 @@ def generate_mcqs_exam_ready(chunks, topic, n, level, subject):
             if len(mcqs) >= n:
                 break
 
-            # Pick main sentence related to topic as correct answer
+            # Correct candidate sentences
             correct_candidates = [s for s in sentences if topic.lower() in s.lower() and s not in used_sentences]
             if not correct_candidates:
                 correct_candidates = [s for s in sentences if s not in used_sentences]
@@ -132,7 +143,7 @@ def generate_mcqs_exam_ready(chunks, topic, n, level, subject):
             correct = random.choice(correct_candidates)
             used_sentences.add(correct)
 
-            # Distractors: other sentences from chunk not correct
+            # Distractors
             distractors = [s for s in sentences if s != correct]
             distractors = random.sample(distractors, min(3, len(distractors)))
             while len(distractors) < 3:
@@ -140,10 +151,11 @@ def generate_mcqs_exam_ready(chunks, topic, n, level, subject):
 
             options = [correct] + distractors
             random.shuffle(options)
-            
+
+            # Determine answer index
             if level == "NCERT Level":
                 answer_index = options.index(correct)
-            else:  # UPSC: multiple correct (1-2)
+            else:  # UPSC: 1-2 correct answers
                 correct_multi = [correct]
                 more_correct = [s for s in sentences if s != correct and topic.lower() in s.lower()]
                 if more_correct:
@@ -159,7 +171,7 @@ def generate_mcqs_exam_ready(chunks, topic, n, level, subject):
         if len(mcqs) >= n:
             break
 
-    # Fallback if not enough questions
+    # Fallback
     while len(mcqs) < n:
         mcqs.append({
             "question": f"What is {topic}?",
@@ -169,23 +181,58 @@ def generate_mcqs_exam_ready(chunks, topic, n, level, subject):
 
     return mcqs
 
+# =========================
+# SIDEBAR
+# =========================
+with st.sidebar:
+    if st.button("📥 Load NCERT Content"):
+        download_zip()
+        extract_zip()
+        st.success("NCERT content loaded")
 
 # =========================
-# DISPLAY MCQs
+# USER INPUT
 # =========================
+subject = st.selectbox("Select Subject", SUBJECTS)
+topic = st.text_input("Enter Topic / Chapter (e.g. Constitution, Federalism)")
+num_q = st.number_input("Number of Questions", 1, 10, 5)
+level = st.radio("Select Level", ["NCERT Level", "UPSC Level"])
+
 # =========================
-# TABS SETUP
+# TABS
 # =========================
 tab1, tab2 = st.tabs(["Subjective Questions", "MCQs"])
 
-# Subjective questions logic
+# =========================
+# SUBJECTIVE QUESTIONS TAB
+# =========================
 with tab1:
-    st.write("Subjective Questions will appear here.")
-    # ... your subjective generation code ...
+    if st.button("Generate Subjective Questions"):
+        if not topic.strip():
+            st.warning("Enter a topic")
+            st.stop()
 
-# MCQs logic
+        texts = load_all_texts()
+        if not texts:
+            st.error("No readable NCERT PDFs found")
+            st.stop()
+
+        chunks = []
+        for t in texts:
+            chunks.extend(semantic_chunk(t))
+        relevant = boolean_filter(chunks, topic, subject)
+        if len(relevant) < 5:
+            relevant = chunks[:15]
+
+        questions = generate_subjective_questions(relevant, topic, num_q)
+        st.success(f"Generated {len(questions)} Subjective Questions")
+        for i, q in enumerate(questions, 1):
+            st.write(f"{i}. {q}")
+
+# =========================
+# MCQS TAB
+# =========================
 with tab2:
-    st.write("MCQs will appear here.")
     if st.button("Generate MCQs"):
         if not topic.strip():
             st.warning("Enter a topic")
@@ -211,11 +258,10 @@ with tab2:
             for idx, opt in enumerate(mcq["options"]):
                 st.write(f"{chr(97+idx)}) {opt}")
 
-            # Correct answer(s)
+            # Display correct answer(s)
             if isinstance(mcq['answer'], list):
                 answers = ", ".join([chr(97 + a) for a in mcq['answer']])
                 st.write(f"✅ **Answer(s):** {answers}")
             else:
                 st.write(f"✅ **Answer:** {chr(97 + mcq['answer'])}")
-            
             st.write("---")
