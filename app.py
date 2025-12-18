@@ -95,7 +95,7 @@ def is_valid_question(q):
 # MCQ GENERATION
 # =========================
 
-ddef generate_mcqs_contextual(chunks, topic, n, level, subject):
+def generate_mcqs_contextual(chunks, topic, n, level, subject):
     """
     Generate meaningful UPSC/NCERT-style MCQs from text chunks.
     - chunks: semantically chunked text
