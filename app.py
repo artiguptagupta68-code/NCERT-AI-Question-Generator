@@ -14,8 +14,8 @@ from pypdf import PdfReader
 # ----------------------------
 # CONFIG
 # ----------------------------
-
-ZIP_PATH = "/content/drive/MyDrive/ncrt subject.zip"
+FILE_ID = "1gdiCsGOeIyaDlJ--9qon8VTya3dbjr6G"  # NCERT Books ZIP
+ZIP_PATH = "ncert_books.zip"
 EXTRACT_DIR = "ncert_data"
 
 SUBJECTS = ["Polity", "Sociology", "Psychology", "Business Studies", "Economics"]
@@ -27,7 +27,6 @@ SUBJECT_KEYWORDS = {
     "Business Studies": ["management", "leadership", "planning", "marketing", "controlling"],
     "Economics": ["economy", "gdp", "growth", "inflation", "poverty", "development"]
 }
-
 
 GENERIC_QUESTION_PATTERNS = [
     "Define {c}.",
@@ -48,16 +47,12 @@ st.title("📘 NCERT NCERT-Style Question Generator (Class XI–XII)")
 # ----------------------------
 # UTILS
 # ----------------------------
-if st.button("Load NCERT Content"):
-    if not os.path.exists(ZIP_PATH):
-        st.error(f"ZIP file not found at {ZIP_PATH}. Please upload it to your Drive.")
-        st.stop()
-
-    extract_zip(ZIP_PATH)
-    st.session_state.pdf_texts = load_all_texts()
-    st.session_state.ncert_loaded = True
-    st.success("NCERT content loaded")
-
+def download_zip(file_id=FILE_ID, out_path=ZIP_PATH):
+    if os.path.exists(out_path):
+        return True
+    url = f"https://drive.google.com/uc?id={file_id}"
+    gdown.download(url, out_path, quiet=False)
+    return os.path.exists(out_path)
 
 def extract_zip(zip_path=ZIP_PATH, dest_dir=EXTRACT_DIR):
     os.makedirs(dest_dir, exist_ok=True)
