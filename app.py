@@ -105,61 +105,82 @@ import re
 
 def generate_mcqs_contextual(chunks, topic, n, level, subject):
     """
-    Generate meaningful MCQs from text chunks.
-    - chunks: semantically chunked text
-    - topic: topic string
-    - n: number of questions
+    Generate NCERT and UPSC-style MCQs from text chunks.
+    
+    Parameters:
+    - chunks: List of semantically chunked text
+    - topic: Topic string
+    - n: Number of questions
     - level: "NCERT Level" or "UPSC Level"
-    - subject: subject context
+    - subject: Subject string
+    
+    Returns:
+    - List of MCQ dicts: {"question": str, "options": list, "answer": int or list}
     """
+    import random, re
+
     mcqs = []
-    used_concepts = set()
+    used_questions = set()
+    topic_lower = topic.lower()
     keywords = [k.lower() for k in SUBJECT_KEYWORDS.get(subject, [])]
 
     random.shuffle(chunks)
 
     for chunk in chunks:
-        # Identify key concepts in the chunk
-        sentences = [s.strip() for s in re.split(r'(?<=[.?!])\s+', chunk) if len(s.split()) > 5]
+        # Consider only sentences containing the topic or related keywords
+        sentences = [s.strip() for s in re.split(r'(?<=[.?!])\s+', chunk)
+                     if topic_lower in s.lower() or any(k in s.lower() for k in keywords)]
+        if not sentences:
+            continue
 
-        for s in sentences:
+        for base_sentence in sentences:
             if len(mcqs) >= n:
                 break
 
-            # Extract a key concept (topic-related)
-            if topic.lower() in s.lower() or any(k in s.lower() for k in keywords):
-                concept = s[:120]  # short snippet for question
-                if concept in used_concepts:
-                    continue
-                used_concepts.add(concept)
+            # NCERT Level: Single-answer factual questions
+            if level == "NCERT Level":
+                question = f"Which of the following statements about {topic} is correct?"
+                answer = base_sentence
 
-                # NCERT: one correct answer, simple phrasing
-                if level == "NCERT Level":
-                    question = f"Which of the following statements about {topic} is correct?"
-                    answer = s.strip()
-                    # Distractors: pick other sentences not the answer
-                    distractors = [sen.strip() for sen in sentences if sen.strip() != answer]
-                    distractors = random.sample(distractors, min(3, len(distractors)))
-                    while len(distractors) < 3:
-                        distractors.append("Incorrect statement")
-                    options = [answer] + distractors
-                    random.shuffle(options)
-                    correct_index = options.index(answer)
+                # Select distractors: other sentences with keywords but not the answer
+                distractors = [s for s in sentences if s != answer]
+                distractors = random.sample(distractors, min(3, len(distractors)))
+                while len(distractors) < 3:
+                    distractors.append("Incorrect statement")
+
+                options = [answer] + distractors
+                random.shuffle(options)
+                correct_index = options.index(answer)
+
+                # Avoid duplicate questions
+                if question not in used_questions:
                     mcqs.append({"question": question, "options": options, "answer": correct_index})
+                    used_questions.add(question)
 
-                # UPSC: analytical / multiple correct
-                elif level == "UPSC Level":
-                    question = f"Consider the following statements about {topic} and select the correct option(s):"
-                    # Pick 1-2 correct statements
-                    correct_sentences = random.sample(sentences, min(2, len(sentences)))
-                    potential_distractors = [sen.strip() for sen in sentences if sen.strip() not in correct_sentences]
-                    distractors = random.sample(potential_distractors, min(2, len(potential_distractors)))
-                    while len(distractors) < 2:
-                        distractors.append("Incorrect statement")
-                    options = correct_sentences + distractors
-                    random.shuffle(options)
-                    correct_indexes = [options.index(c) for c in correct_sentences]
+            # UPSC Level: Analytical, scenario or multiple-answer
+            elif level == "UPSC Level":
+                question = f"Consider the following statements about {topic} and select the correct option(s):"
+                
+                # Choose 1-2 correct statements from chunk
+                correct_sentences = random.sample(sentences, min(2, len(sentences)))
+
+                # Select distractors: sentences not in correct_sentences but with keywords
+                potential_distractors = [s for s in sentences if s not in correct_sentences]
+                distractors = random.sample(potential_distractors, min(2, len(potential_distractors)))
+                while len(distractors) < 2:
+                    distractors.append("Incorrect statement")
+
+                options = correct_sentences + distractors
+                random.shuffle(options)
+                correct_indexes = [options.index(c) for c in correct_sentences]
+
+                # Avoid duplicate questions
+                if question not in used_questions:
                     mcqs.append({"question": question, "options": options, "answer": correct_indexes})
+                    used_questions.add(question)
+
+            if len(mcqs) >= n:
+                break
 
         if len(mcqs) >= n:
             break
