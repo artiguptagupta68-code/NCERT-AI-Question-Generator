@@ -117,7 +117,7 @@ def boolean_filter(chunks, topic, subject):
 # =========================
 # QUESTION GENERATION
 # =========================
-def generate_mcqs_dynamic(topic, chunks, n, subject, level="NCERT Level"):
+def generate_mcqs_dynamic(topic, chunks, n, subject, level="UPSC Level"):
     """
     Generates UPSC/NCERT standard MCQs from chunks.
     """
@@ -241,8 +241,7 @@ with tab2:
         if len(relevant) < 5:
             relevant = chunks[:15]
 
-        mcqs = generate_mcqs_dynamic(topic, relevant, num_q, level)
-
+        mcqs = generate_mcqs_dynamic(topic, relevant, num_q, subject, level)
         st.success(f"Generated {len(mcqs)} MCQs ({level})")
         for i, mcq in enumerate(mcqs, 1):
             st.write(f"**Q{i}. {mcq['question']}**")
