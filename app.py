@@ -1,4 +1,4 @@
-# NCERT Question Generator with Subjective & MCQs
+# NCERT Question Generator with Subjective & MCQs (NCERT + UPSC)
 import os
 import zipfile
 import re
@@ -19,168 +19,173 @@ EXTRACT_DIR = "ncert_data"
 SUBJECTS = ["Polity", "Sociology", "Psychology", "Business Studies", "Economics"]
 
 SUBJECT_KEYWORDS = {
-    "Polity": ["constitution", "writ", "rights", "judiciary", "parliament", "emergency"],
-    "Sociology": ["society", "social", "caste", "class", "gender", "movement"],
-    "Psychology": ["behaviour", "learning", "memory", "emotion", "motivation"],
-    "Business Studies": ["management", "planning", "organising", "leadership", "marketing"],
-    "Economics": ["economy", "growth", "gdp", "poverty", "inflation", "development"]
+    "Polity": ["constitution", "federal", "parliament", "judiciary", "union", "state"],
+    "Sociology": ["society", "caste", "class", "gender"],
+    "Psychology": ["behaviour", "learning", "emotion"],
+    "Business Studies": ["management", "planning", "marketing"],
+    "Economics": ["economy", "gdp", "growth", "inflation"]
 }
 
-MCQ_TEMPLATES = [
+# =========================
+# MCQ TEMPLATES
+# =========================
+
+NCERT_MCQ_TEMPLATES = [
     {
-        "q": "What is {c}?",
+        "q": "What is meant by {c}?",
         "options": [
-            "A basic concept in the subject",
-            "An unrelated term",
-            "A random historical fact",
-            "A recent development in technology"
+            "A system of government with division of powers",
+            "A unitary form of administration",
+            "A judicial principle",
+            "An economic arrangement"
         ],
         "answer": 0
     },
     {
-        "q": "Which statement best describes {c}?",
+        "q": "Which of the following best describes {c}?",
         "options": [
-            "It is central to governance and society",
-            "It is purely theoretical with no application",
-            "It is irrelevant today",
-            "It is only used in exams"
-        ],
-        "answer": 0
-    },
-    {
-        "q": "The main features of {c} include:",
-        "options": [
-            "Governance and regulation",
-            "Ignoring legal frameworks",
-            "Random social events",
-            "Unrelated historical facts"
+            "Power shared between Centre and States",
+            "Power concentrated at Centre",
+            "Power exercised by judiciary",
+            "Power exercised by military"
         ],
         "answer": 0
     }
 ]
 
-GENERIC_PATTERNS = [
+UPSC_MCQ_TEMPLATES = [
+    {
+        "q": "With reference to {c}, consider the following statements:",
+        "statements": [
+            "The Constitution divides powers between different levels of government.",
+            "The Centre has overriding powers in certain situations."
+        ],
+        "options": [
+            "1 only",
+            "2 only",
+            "Both 1 and 2",
+            "Neither 1 nor 2"
+        ],
+        "answer": 2
+    }
+]
+
+ASSERTION_REASON = [
+    {
+        "assertion": "India is described as a quasi-federal State.",
+        "reason": "The Constitution provides for a strong Centre with residuary powers.",
+        "answer": 0
+    }
+]
+
+ASSERTION_OPTIONS = [
+    "Both A and R are true and R is the correct explanation of A",
+    "Both A and R are true but R is not the correct explanation of A",
+    "A is true but R is false",
+    "A is false but R is true"
+]
+
+SUBJECTIVE_NCERT = [
     "Explain the concept of {c}.",
-    "Describe the importance of {c}.",
-    "Discuss the role of {c} in society.",
-    "Why is {c} significant?"
+    "Describe the main features of {c}."
+]
+
+SUBJECTIVE_UPSC = [
+    "Discuss the significance of {c} in the Indian constitutional system.",
+    "Examine the challenges associated with {c}."
 ]
 
 # =========================
 # STREAMLIT SETUP
 # =========================
-st.set_page_config(page_title="NCERT Question Generator", layout="wide")
-st.title("📘 NCERT Question Generator (Class XI–XII)")
+st.set_page_config(page_title="NCERT–UPSC Question Generator", layout="wide")
+st.title("📘 NCERT–UPSC Question Generator (Class XI–XII)")
 
 # =========================
 # UTILITIES
 # =========================
 def download_zip():
     if not os.path.exists(ZIP_PATH):
-        url = f"https://drive.google.com/uc?id={FILE_ID}"
-        gdown.download(url, ZIP_PATH, quiet=False)
+        gdown.download(f"https://drive.google.com/uc?id={FILE_ID}", ZIP_PATH, quiet=False)
 
 def extract_zip():
     if not os.path.exists(EXTRACT_DIR):
         os.makedirs(EXTRACT_DIR, exist_ok=True)
     with zipfile.ZipFile(ZIP_PATH, "r") as z:
         z.extractall(EXTRACT_DIR)
-    extract_nested_zips(EXTRACT_DIR)
-
-def extract_nested_zips(base_dir):
-    for root, dirs, files in os.walk(base_dir):
-        for file in files:
-            if file.lower().endswith(".zip"):
-                nested_zip_path = os.path.join(root, file)
-                nested_extract_dir = os.path.join(root, Path(file).stem)
-                os.makedirs(nested_extract_dir, exist_ok=True)
-                with zipfile.ZipFile(nested_zip_path, "r") as nz:
-                    nz.extractall(nested_extract_dir)
+    for root, _, files in os.walk(EXTRACT_DIR):
+        for f in files:
+            if f.endswith(".zip"):
+                p = os.path.join(root, f)
+                with zipfile.ZipFile(p, "r") as nz:
+                    nz.extractall(os.path.join(root, Path(f).stem))
 
 def read_pdf(path):
     try:
-        reader = PdfReader(path)
-        return " ".join(page.extract_text() or "" for page in reader.pages)
+        r = PdfReader(path)
+        return " ".join(p.extract_text() or "" for p in r.pages)
     except:
         return ""
 
-def clean_text(text):
-    text = re.sub(r"(instructions|time allowed|marks|copyright).*", " ", text, flags=re.I)
-    text = re.sub(r"\s+", " ", text)
-    return text.strip()
+def clean_text(t):
+    t = re.sub(r"\s+", " ", t)
+    return t.strip()
 
-# =========================
-# SEMANTIC CHUNKING
-# =========================
 def semantic_chunk(text):
-    sentences = re.split(r'(?<=[.?!])\s+', text)
-    chunks = []
-    for i in range(0, len(sentences), 4):
-        chunk = " ".join(sentences[i:i+4])
-        if len(chunk.split()) > 30:
-            chunks.append(chunk)
-    return chunks
+    s = re.split(r'(?<=[.?!])\s+', text)
+    return [" ".join(s[i:i+4]) for i in range(0, len(s), 4) if len(s[i:i+4]) > 2]
 
-# =========================
-# BOOLEAN FILTER
-# =========================
 def boolean_filter(chunks, topic, subject):
     topic = topic.lower()
     keys = SUBJECT_KEYWORDS[subject]
     return [c for c in chunks if topic in c.lower() or any(k in c.lower() for k in keys)]
 
-# =========================
-# QUESTION VALIDATION
-# =========================
-def is_valid_question(q):
-    return len(q.split()) > 5
-
-# =========================
-# SUBJECTIVE QUESTION GENERATION
-# =========================
-def generate_subjective(chunks, topic, n):
-    questions, seen = [], set()
-    random.shuffle(chunks)
-    for c in chunks:
-        q = random.choice(GENERIC_PATTERNS).format(c=topic)
-        if q not in seen and is_valid_question(q):
-            seen.add(q)
-            questions.append(q)
-        if len(questions) >= n:
-            break
-    if not questions:
-        questions = [f"Explain the concept of {topic}." for _ in range(n)]
-    return questions
-
-# =========================
-# MCQ GENERATION
-# =========================
-def generate_mcqs(topic, n):
-    mcqs = []
-    used = set()
-    random.shuffle(MCQ_TEMPLATES)
-    for t in MCQ_TEMPLATES:
-        if len(mcqs) >= n:
-            break
-        question = t["q"].format(c=topic)
-        if question in used:
-            continue
-        mcqs.append({"question": question, "options": t["options"], "answer": t["answer"]})
-        used.add(question)
-    while len(mcqs) < n:
-        mcqs.append({"question": f"What is {topic}?", "options": ["Option1","Option2","Option3","Option4"], "answer": 0})
-    return mcqs
-
-# =========================
-# LOAD PDF TEXTS
-# =========================
-def load_all_texts():
+def load_texts():
     texts = []
     for pdf in Path(EXTRACT_DIR).rglob("*.pdf"):
         t = clean_text(read_pdf(str(pdf)))
         if len(t.split()) > 50:
             texts.append(t)
     return texts
+
+# =========================
+# GENERATORS
+# =========================
+def generate_subjective(topic, n, level):
+    patterns = SUBJECTIVE_NCERT if level == "NCERT Level" else SUBJECTIVE_UPSC
+    return [random.choice(patterns).format(c=topic) for _ in range(n)]
+
+def generate_mcqs(topic, n, level, difficulty):
+    mcqs = []
+
+    if level == "NCERT Level":
+        templates = NCERT_MCQ_TEMPLATES
+
+    else:
+        if difficulty == "Hard":
+            templates = ASSERTION_REASON
+        else:
+            templates = UPSC_MCQ_TEMPLATES
+
+    for t in templates[:n]:
+        if "assertion" in t:
+            q = f"Assertion (A): {t['assertion']}\nReason (R): {t['reason']}"
+            mcqs.append({"question": q, "options": ASSERTION_OPTIONS, "answer": t["answer"]})
+
+        elif "statements" in t:
+            q = t["q"].format(c=topic) + "\n" + "\n".join(
+                [f"{i+1}. {s}" for i, s in enumerate(t["statements"])]
+            )
+            mcqs.append({"question": q, "options": t["options"], "answer": t["answer"]})
+
+        else:
+            mcqs.append({
+                "question": t["q"].format(c=topic),
+                "options": t["options"],
+                "answer": t["answer"]
+            })
+
+    return mcqs
 
 # =========================
 # SIDEBAR
@@ -192,71 +197,40 @@ with st.sidebar:
         st.success("NCERT content loaded")
 
 # =========================
-# UI INPUT
+# UI
 # =========================
-subject = st.selectbox("Select Subject", SUBJECTS)
-topic = st.text_input("Enter Topic / Chapter (e.g. Constitution, GDP, Emotion)")
-num_q = st.number_input("Number of Questions", 1, 10, 5)
-level = st.radio("Select Level", ["NCERT Level", "UPSC Level"])
+subject = st.selectbox("Subject", SUBJECTS)
+topic = st.text_input("Topic / Chapter")
+num_q = st.slider("Number of Questions", 1, 10, 5)
+level = st.radio("Level", ["NCERT Level", "UPSC Level"])
+difficulty = st.select_slider("Difficulty", ["Easy", "Moderate", "Hard"], value="Moderate")
 
-tab1, tab2 = st.tabs(["Subjective Questions", "MCQs"])
+tab1, tab2 = st.tabs(["Subjective", "MCQs"])
+
+texts = load_texts()
+chunks = []
+for t in texts:
+    chunks.extend(semantic_chunk(t))
+relevant = boolean_filter(chunks, topic, subject)
 
 # =========================
-# GENERATE SUBJECTIVE
+# SUBJECTIVE
 # =========================
 with tab1:
-    if st.button("Generate Subjective Questions"):
-        if not topic.strip():
-            st.warning("Enter a topic")
-            st.stop()
-
-        texts = load_all_texts()
-        if not texts:
-            st.error("No readable NCERT PDFs found")
-            st.stop()
-
-        chunks = []
-        for t in texts:
-            chunks.extend(semantic_chunk(t))
-
-        relevant = boolean_filter(chunks, topic, subject)
-        if len(relevant) < 5:
-            relevant = chunks[:15]
-
-        questions = generate_subjective(relevant, topic, num_q)
-
-        st.success(f"Generated {len(questions)} Subjective Questions ({level})")
-        for i, q in enumerate(questions, 1):
+    if st.button("Generate Subjective"):
+        qs = generate_subjective(topic, num_q, level)
+        for i, q in enumerate(qs, 1):
             st.write(f"{i}. {q}")
 
 # =========================
-# GENERATE MCQs
+# MCQs
 # =========================
 with tab2:
     if st.button("Generate MCQs"):
-        if not topic.strip():
-            st.warning("Enter a topic")
-            st.stop()
-
-        texts = load_all_texts()
-        if not texts:
-            st.error("No readable NCERT PDFs found")
-            st.stop()
-
-        chunks = []
-        for t in texts:
-            chunks.extend(semantic_chunk(t))
-
-        relevant = boolean_filter(chunks, topic, subject)
-        if len(relevant) < 5:
-            relevant = chunks[:15]
-
-        mcqs = generate_mcqs(topic, num_q)
-
-        st.success(f"Generated {len(mcqs)} MCQs ({level})")
-        for i, mcq in enumerate(mcqs, 1):
-            st.write(f"**Q{i}. {mcq['question']}**")
-            for idx, opt in enumerate(mcq["options"]):
-                st.write(f"{chr(97+idx)}) {opt}")
-            st.write(f"✅ **Answer:** {chr(97 + mcq['answer'])}")
+        mcqs = generate_mcqs(topic, num_q, level, difficulty)
+        for i, m in enumerate(mcqs, 1):
+            st.write(f"**Q{i}. {m['question']}**")
+            for j, o in enumerate(m["options"]):
+                st.write(f"{chr(97+j)}) {o}")
+            st.write(f"✅ Answer: {chr(97 + m['answer'])}")
             st.write("---")
