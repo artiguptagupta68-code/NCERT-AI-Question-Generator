@@ -219,29 +219,27 @@ with tab2:
             st.error("No readable NCERT PDFs found")
             st.stop()
 
-        # Semantic chunking
         chunks = []
         for t in texts:
             chunks.extend(semantic_chunk(t))
 
-        # Filter for relevance
         relevant = boolean_filter(chunks, topic, subject)
         if len(relevant) < 5:
             relevant = chunks[:15]
 
-        # Generate context-aware MCQs
         mcqs = generate_mcqs_upsc(relevant, topic, num_q, level, subject)
 
-for i, mcq in enumerate(mcqs, 1):
-    st.write(f"**Q{i}. {mcq['question']}**")
-    for idx, opt in enumerate(mcq["options"]):
-        st.write(f"{chr(97+idx)}) {opt}")
-    
-    if isinstance(mcq['answer'], list):  # UPSC: multiple answers
-        answers = ", ".join([chr(97 + a) for a in mcq['answer']])
-        st.write(f"✅ **Answer(s):** {answers}")
-    else:  # NCERT: single answer
-        st.write(f"✅ **Answer:** {chr(97 + mcq['answer'])}")
-    
-    st.write("---")
+        st.success(f"Generated {len(mcqs)} MCQs ({level})")
 
+        for i, mcq in enumerate(mcqs, 1):
+            st.write(f"**Q{i}. {mcq['question']}**")
+            for idx, opt in enumerate(mcq["options"]):
+                st.write(f"{chr(97+idx)}) {opt}")
+
+            if isinstance(mcq['answer'], list):  # UPSC: multiple answers
+                answers = ", ".join([chr(97 + a) for a in mcq['answer']])
+                st.write(f"✅ **Answer(s):** {answers}")
+            else:  # NCERT: single answer
+                st.write(f"✅ **Answer:** {chr(97 + mcq['answer'])}")
+            
+            st.write("---")
