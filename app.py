@@ -94,93 +94,67 @@ def is_valid_question(q):
 # =========================
 # MCQ GENERATION
 # =========================
-import random
-import re
-
-import random
-import re
-
-import random
-import re
 
 def generate_mcqs_contextual(chunks, topic, n, level, subject):
     """
-    Generate NCERT and UPSC-style MCQs from text chunks.
-    
-    Parameters:
-    - chunks: List of semantically chunked text
-    - topic: Topic string
-    - n: Number of questions
+    Generate meaningful MCQs from text chunks.
+    - chunks: semantically chunked text
+    - topic: topic string
+    - n: number of questions
     - level: "NCERT Level" or "UPSC Level"
-    - subject: Subject string
-    
-    Returns:
-    - List of MCQ dicts: {"question": str, "options": list, "answer": int or list}
+    - subject: subject context
     """
-    import random, re
-
     mcqs = []
     used_questions = set()
     topic_lower = topic.lower()
     keywords = [k.lower() for k in SUBJECT_KEYWORDS.get(subject, [])]
 
+    # Shuffle chunks to get random selection
     random.shuffle(chunks)
 
     for chunk in chunks:
-        # Consider only sentences containing the topic or related keywords
-        sentences = [s.strip() for s in re.split(r'(?<=[.?!])\s+', chunk)
-                     if topic_lower in s.lower() or any(k in s.lower() for k in keywords)]
-        if not sentences:
+        # Split chunk into meaningful sentences
+        sentences = [s.strip() for s in re.split(r'(?<=[.?!])\s+', chunk) if len(s.split()) > 5]
+        # Keep only sentences containing topic or keywords
+        relevant_sentences = [s for s in sentences if topic_lower in s.lower() or any(k in s.lower() for k in keywords)]
+        if not relevant_sentences:
             continue
 
-        for base_sentence in sentences:
+        for base_sentence in relevant_sentences:
             if len(mcqs) >= n:
                 break
 
-            # NCERT Level: Single-answer factual questions
+            # Create NCERT-level question
             if level == "NCERT Level":
                 question = f"Which of the following statements about {topic} is correct?"
-                answer = base_sentence
+                correct_answer = base_sentence
 
-                # Select distractors: other sentences with keywords but not the answer
-                distractors = [s for s in sentences if s != answer]
+                # Distractors: pick other sentences in the chunk or generic placeholders
+                distractors = [s for s in relevant_sentences if s != correct_answer]
                 distractors = random.sample(distractors, min(3, len(distractors)))
                 while len(distractors) < 3:
                     distractors.append("Incorrect statement")
 
-                options = [answer] + distractors
+                options = [correct_answer] + distractors
                 random.shuffle(options)
-                correct_index = options.index(answer)
+                correct_index = options.index(correct_answer)
+                mcqs.append({"question": question, "options": options, "answer": correct_index})
 
-                # Avoid duplicate questions
-                if question not in used_questions:
-                    mcqs.append({"question": question, "options": options, "answer": correct_index})
-                    used_questions.add(question)
-
-            # UPSC Level: Analytical, scenario or multiple-answer
+            # UPSC-level question
             elif level == "UPSC Level":
                 question = f"Consider the following statements about {topic} and select the correct option(s):"
-                
-                # Choose 1-2 correct statements from chunk
-                correct_sentences = random.sample(sentences, min(2, len(sentences)))
-
-                # Select distractors: sentences not in correct_sentences but with keywords
-                potential_distractors = [s for s in sentences if s not in correct_sentences]
+                # Select 1-2 correct statements
+                correct_statements = random.sample(relevant_sentences, min(2, len(relevant_sentences)))
+                # Distractors: other relevant sentences or generic placeholders
+                potential_distractors = [s for s in relevant_sentences if s not in correct_statements]
                 distractors = random.sample(potential_distractors, min(2, len(potential_distractors)))
                 while len(distractors) < 2:
                     distractors.append("Incorrect statement")
 
-                options = correct_sentences + distractors
+                options = correct_statements + distractors
                 random.shuffle(options)
-                correct_indexes = [options.index(c) for c in correct_sentences]
-
-                # Avoid duplicate questions
-                if question not in used_questions:
-                    mcqs.append({"question": question, "options": options, "answer": correct_indexes})
-                    used_questions.add(question)
-
-            if len(mcqs) >= n:
-                break
+                correct_indexes = [options.index(s) for s in correct_statements]
+                mcqs.append({"question": question, "options": options, "answer": correct_indexes})
 
         if len(mcqs) >= n:
             break
@@ -194,6 +168,7 @@ def generate_mcqs_contextual(chunks, topic, n, level, subject):
         })
 
     return mcqs
+
 
 
 
