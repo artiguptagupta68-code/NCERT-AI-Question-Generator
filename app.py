@@ -14,8 +14,8 @@ from pypdf import PdfReader
 # ----------------------------
 # CONFIG
 # ----------------------------
-FILE_ID = "1gdiCsGOeIyaDlJ--9qon8VTya3dbjr6G"  # NCERT Books ZIP
-ZIP_PATH = "ncert_books.zip"
+FILE_ID = "1l5tGbJcvwsPiiOyi-MZYoWzoTDGjTWOz/view?usp=sharing"  # NCERT Books ZIP
+ZIP_PATH = "/content/drive/MyDrive/ncrt subject.zip"
 EXTRACT_DIR = "ncert_data"
 
 SUBJECTS = ["Polity", "Sociology", "Psychology", "Business Studies", "Economics"]
