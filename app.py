@@ -1,11 +1,6 @@
-# NCERT Question Generator with Subjective & MCQs (STABLE VERSION)
-
-import os
-import zipfile
-import re
-import random
+# NCERT & UPSC Context-aware MCQ Generator
+import os, zipfile, re, random
 from pathlib import Path
-
 import streamlit as st
 import gdown
 from pypdf import PdfReader
@@ -20,21 +15,21 @@ EXTRACT_DIR = "ncert_data"
 SUBJECTS = ["Polity", "Sociology", "Psychology", "Business Studies", "Economics"]
 
 SUBJECT_KEYWORDS = {
-    "Polity": ["constitution", "federal", "rights", "judiciary", "parliament"],
-    "Sociology": ["society", "caste", "class", "gender"],
-    "Psychology": ["learning", "memory", "emotion"],
-    "Business Studies": ["management", "planning", "marketing"],
-    "Economics": ["economy", "gdp", "inflation", "growth"]
+    "Polity": ["constitution", "writ", "rights", "judiciary", "parliament", "federalism", "emergency"],
+    "Sociology": ["society", "social", "caste", "class", "gender", "movement"],
+    "Psychology": ["behaviour", "learning", "memory", "emotion", "motivation"],
+    "Business Studies": ["management", "planning", "organising", "leadership", "marketing"],
+    "Economics": ["economy", "growth", "gdp", "poverty", "inflation", "development"]
 }
 
 # =========================
 # STREAMLIT SETUP
 # =========================
-st.set_page_config("NCERT Question Generator", layout="wide")
-st.title("📘 NCERT Question Generator (Class XI–XII)")
+st.set_page_config(page_title="NCERT & UPSC MCQ Generator", layout="wide")
+st.title("📘 NCERT & UPSC MCQ Generator")
 
 # =========================
-# FILE UTILITIES
+# UTILITIES
 # =========================
 def download_zip():
     if not os.path.exists(ZIP_PATH):
@@ -42,144 +37,103 @@ def download_zip():
         gdown.download(url, ZIP_PATH, quiet=False)
 
 def extract_zip():
-    os.makedirs(EXTRACT_DIR, exist_ok=True)
-    with zipfile.ZipFile(ZIP_PATH, "r") as z:
-        z.extractall(EXTRACT_DIR)
-    extract_nested_zips(EXTRACT_DIR)
+    if not os.path.exists(EXTRACT_DIR):
+        os.makedirs(EXTRACT_DIR, exist_ok=True)
+        with zipfile.ZipFile(ZIP_PATH, "r") as z:
+            z.extractall(EXTRACT_DIR)
+        extract_nested_zips(EXTRACT_DIR)
 
 def extract_nested_zips(base_dir):
-    for root, _, files in os.walk(base_dir):
-        for f in files:
-            if f.lower().endswith(".zip"):
-                zp = os.path.join(root, f)
-                out = os.path.join(root, Path(f).stem)
-                os.makedirs(out, exist_ok=True)
-                with zipfile.ZipFile(zp, "r") as nz:
-                    nz.extractall(out)
+    for root, dirs, files in os.walk(base_dir):
+        for file in files:
+            if file.lower().endswith(".zip"):
+                nested_zip_path = os.path.join(root, file)
+                nested_extract_dir = os.path.join(root, Path(file).stem)
+                os.makedirs(nested_extract_dir, exist_ok=True)
+                with zipfile.ZipFile(nested_zip_path, "r") as nz:
+                    nz.extractall(nested_extract_dir)
 
-# =========================
-# PDF READING (CACHED)
-# =========================
-@st.cache_data(show_spinner=True)
-def load_all_texts():
-    texts = []
-    for pdf in Path(EXTRACT_DIR).rglob("*.pdf"):
-        try:
-            reader = PdfReader(str(pdf))
-            text = " ".join(p.extract_text() or "" for p in reader.pages)
-            text = re.sub(r"\s+", " ", text).strip()
-            if len(text.split()) > 50:
-                texts.append(text)
-        except:
-            continue
-    return texts
+def read_pdf(path):
+    try:
+        reader = PdfReader(path)
+        return " ".join(page.extract_text() or "" for page in reader.pages)
+    except:
+        return ""
 
-@st.cache_data(show_spinner=True)
-def build_chunks(texts):
-    chunks = []
-    for t in texts:
-        sentences = re.split(r'(?<=[.?!])\s+', t)
-        for i in range(0, len(sentences), 4):
-            chunk = " ".join(sentences[i:i+4])
-            if len(chunk.split()) > 30:
-                chunks.append(chunk)
-    return chunks
+def clean_text(text):
+    text = re.sub(r"(instructions|time allowed|marks|copyright).*", " ", text, flags=re.I)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
 
 # =========================
 # SEMANTIC CHUNKING
 # =========================
 def semantic_chunk(text):
-    """
-    Splits text into semantic chunks for question generation.
-    Each chunk is ~3–5 sentences long, and only included if length > 30 words.
-    """
-    import re
     sentences = re.split(r'(?<=[.?!])\s+', text)
     chunks = []
-    for i in range(0, len(sentences), 4):  # 4 sentences per chunk
+    for i in range(0, len(sentences), 4):
         chunk = " ".join(sentences[i:i+4])
         if len(chunk.split()) > 30:
             chunks.append(chunk)
     return chunks
 
-
 # =========================
-# FILTERING
+# BOOLEAN FILTER
 # =========================
 def boolean_filter(chunks, topic, subject):
     topic = topic.lower()
     keys = SUBJECT_KEYWORDS[subject]
-    return [
-        c for c in chunks
-        if topic in c.lower() or any(k in c.lower() for k in keys)
-    ]
+    return [c for c in chunks if topic in c.lower() or any(k in c.lower() for k in keys)]
 
 # =========================
-# QUESTION GENERATION
+# VALIDATION
 # =========================
-def generate_mcqs_dynamic(topic, chunks, n, subject, level="UPSC Level"):
-    """
-    Generates UPSC/NCERT standard MCQs from chunks.
-    """
+def is_valid_question(q):
+    return len(q.split()) > 5
+
+# =========================
+# MCQ GENERATION
+# =========================
+def generate_mcqs_dynamic(chunks, topic, n, level, subject):
     mcqs = []
-    used_questions = set()
-    
-    # Flatten text for distractor pool
-    pool_text = " ".join(chunks)
-    
     random.shuffle(chunks)
     for chunk in chunks:
+        # pick a base sentence containing the topic
+        sentences = [s for s in re.split(r'(?<=[.?!])\s+', chunk) if topic.lower() in s.lower()]
+        if not sentences:
+            continue
+        base_sentence = sentences[0]
+        # distractors: pick other sentences from chunk not same as answer
+        distractors = [s for s in re.split(r'(?<=[.?!])\s+', chunk) if s.strip() != base_sentence]
+        distractors = random.sample(distractors, min(3, len(distractors)))
+        # format MCQ
+        mcq = {
+            "question": f"Which of the following statements best describes: {topic}?",
+            "options": [base_sentence] + distractors,
+            "answer": 0
+        }
+        mcqs.append(mcq)
         if len(mcqs) >= n:
             break
-        sentences = re.split(r'(?<=[.?!])\s+', chunk)
-        relevant_sentences = [s for s in sentences if topic.lower() in s.lower()]
-        if not relevant_sentences:
-            continue
-        base_sentence = random.choice(relevant_sentences)
-        
-        # Question construction
-        if level == "NCERT Level":
-            question = f"What is/are described in the following statement? \n\n{base_sentence}"
-        else:  # UPSC Level
-            question = f"Consider the following statement:\n\n{base_sentence}\n\nWhich of the following is correct?"
-        
-        # Distractors: pick other sentences containing subject keywords but not the answer
-        distractors = []
-        answer = base_sentence.strip()
-        keywords = SUBJECT_KEYWORDS[subject]
-        potential_distractors = [s for s in re.split(r'(?<=[.?!])\s+', pool_text)
-                                 if any(k in s.lower() for k in keywords)
-                                 and s.strip() != answer]
-        random.shuffle(potential_distractors)
-        for d in potential_distractors:
-            if len(distractors) >= 3:
-                break
-            distractors.append(d.strip())
-        
-        # Ensure 3 distractors
-        while len(distractors) < 3:
-            distractors.append("None of the above")  # fallback placeholder
-        
-        # Shuffle options
-        options = [answer] + distractors
-        random.shuffle(options)
-        correct_idx = options.index(answer)
-        
-        # Avoid duplicates
-        if question in used_questions:
-            continue
-        used_questions.add(question)
-        
+    # fallback if not enough questions
+    while len(mcqs) < n:
         mcqs.append({
-            "q": question,
-            "options": options,
-            "ans": correct_idx
+            "question": f"What is {topic}?",
+            "options": ["Option1", "Option2", "Option3", "Option4"],
+            "answer": 0
         })
-    
     return mcqs
 
-
-
+# =========================
+# LOAD TEXTS
+# =========================
+def load_all_texts():
+    texts = []
+    for pdf in Path(EXTRACT_DIR).rglob("*.pdf"):
+        t = clean_text(read_pdf(str(pdf)))
+        if len(t.split()) > 50:
+            texts.append(t)
+    return texts
 
 # =========================
 # SIDEBAR
@@ -191,63 +145,38 @@ with st.sidebar:
         st.success("NCERT content loaded")
 
 # =========================
-# USER INPUT
+# UI INPUT
 # =========================
 subject = st.selectbox("Select Subject", SUBJECTS)
-topic = st.text_input("Enter Topic (e.g. Federalism, GDP)")
-num_q = st.slider("Number of Questions", 3, 10, 5)
+topic = st.text_input("Enter Topic / Chapter (e.g. Constitution, Federalism)")
+num_q = st.number_input("Number of Questions", 1, 10, 5)
 level = st.radio("Select Level", ["NCERT Level", "UPSC Level"])
 
-tab1, tab2 = st.tabs(["✍️ Subjective", "📝 MCQs"])
+tab1, tab2 = st.tabs(["Subjective Questions", "MCQs"])
 
 # =========================
-# SUBJECTIVE TAB
-# =========================
-with tab1:
-    if st.button("Generate Subjective Questions"):
-        if not topic.strip():
-            st.warning("Please enter a topic")
-            st.stop()
-
-        texts = load_all_texts()
-        chunks = build_chunks(texts)
-        relevant = boolean_filter(chunks, topic, subject)
-
-        questions = generate_subjective(topic, num_q, level)
-
-        st.success("Questions Generated")
-        for i, q in enumerate(questions, 1):
-            st.write(f"{i}. {q}")
-
-# =========================
-# MCQ TAB
+# GENERATE MCQs
 # =========================
 with tab2:
     if st.button("Generate MCQs"):
         if not topic.strip():
             st.warning("Enter a topic")
             st.stop()
-
         texts = load_all_texts()
         if not texts:
             st.error("No readable NCERT PDFs found")
             st.stop()
-
         chunks = []
         for t in texts:
             chunks.extend(semantic_chunk(t))
-
         relevant = boolean_filter(chunks, topic, subject)
         if len(relevant) < 5:
             relevant = chunks[:15]
-
-        mcqs = generate_mcqs_dynamic(topic, relevant, num_q, subject, level)
+        mcqs = generate_mcqs_dynamic(relevant, topic, num_q, level, subject)
         st.success(f"Generated {len(mcqs)} MCQs ({level})")
         for i, mcq in enumerate(mcqs, 1):
             st.write(f"**Q{i}. {mcq['question']}**")
-for idx, opt in enumerate(mcq["options"]):
-    st.write(f"{chr(97+idx)}) {opt}")
-st.write(f"✅ **Answer:** {chr(97 + mcq['answer'])}")
-
-
-
+            for idx, opt in enumerate(mcq["options"]):
+                st.write(f"{chr(97+idx)}) {opt}")
+            st.write(f"✅ **Answer:** {chr(97 + mcq['answer'])}")
+            st.write("---")
