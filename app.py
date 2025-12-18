@@ -99,72 +99,27 @@ def boolean_filter(chunks, topic, subject):
 # =========================
 # QUESTION GENERATION
 # =========================
-def generate_subjective(topic, n, level):
-    base = [
-        f"Explain the concept of {topic}.",
-        f"Discuss the importance of {topic}.",
-        f"Describe the main features of {topic}.",
-        f"Analyse the role of {topic}."
-    ]
-    if level == "UPSC Level":
-        base += [
-            f"Critically examine {topic}.",
-            f"Discuss {topic} with suitable examples."
-        ]
-    return random.sample(base * 2, n)
-
-def generate_mcqs(topic, n, level, subject):
+def generate_mcqs_dynamic(topic, n, level, subject, chunks):
     mcqs = []
-    used_stems = set()
 
-    ncert_stems = [
-        f"What is meant by {topic}?",
-        f"Which of the following best describes {topic}?",
-        f"{topic} is important because:",
-        f"Which statement is correct regarding {topic}?"
-    ]
+    # Filter relevant chunks
+    relevant_chunks = boolean_filter(chunks, topic, subject)
+    if len(relevant_chunks) < n:
+        relevant_chunks = chunks[:n]
 
-    upsc_stems = [
-        f"With reference to {topic}, consider the following statements:",
-        f"In the context of Indian governance, {topic} implies:",
-        f"{topic} is often discussed in public policy debates because:",
-        f"Which of the following are implications of {topic}?"
-    ]
-
-    correct_options = [
-        "It strengthens democratic governance",
-        "It promotes cooperative federalism",
-        "It supports constitutional objectives",
-        "It enhances state capacity and service delivery"
-    ]
-
-    wrong_options = [
-        "It weakens constitutionalism",
-        "It has no relevance in present times",
-        "It eliminates federal balance",
-        "It bypasses democratic accountability",
-        "It centralizes power without checks"
-    ]
-
-    stems = upsc_stems if level == "UPSC Level" else ncert_stems
-
-    while len(mcqs) < n:
-        stem = random.choice(stems)
-
-        if stem in used_stems:
-            continue
-        used_stems.add(stem)
-
-        correct = random.choice(correct_options)
-        distractors = random.sample(wrong_options, 3)
-
-        options = distractors + [correct]
+    for i in range(n):
+        # pick a random chunk as the "correct answer"
+        correct_chunk = random.choice(relevant_chunks)
+        # pick 3 distractors from other chunks
+        distractors = random.sample([c for c in chunks if c != correct_chunk], k=3)
+        options = [correct_chunk] + distractors
         random.shuffle(options)
+        answer_index = options.index(correct_chunk)
 
         mcqs.append({
-            "question": stem,
+            "question": f"Which of the following statements best describes {topic}?",
             "options": options,
-            "answer": options.index(correct)
+            "answer": answer_index
         })
 
     return mcqs
