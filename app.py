@@ -252,7 +252,7 @@ with tab2:
 
     if st.button("Generate MCQs"):
         if mcq_type == "NCERT MCQs":
-            mcqs = generate_ncert_mcqs(relevant, topic, num_q)
+            mcqs = generate_ncert_mcqs_refined(relevant, topic, num_q)
             for i, m in enumerate(mcqs, 1):
                 st.write(f"**Q{i}. {m['q']}**")
                 for j, opt in enumerate(m["options"]):
@@ -261,7 +261,7 @@ with tab2:
                 st.write("---")
 
         elif mcq_type == "UPSC PYQ – Statements":
-            qs = generate_upsc_statements(relevant, topic, num_q)
+            qs = generate_upsc_statements_refined(relevant, topic, num_q)
             for i, q in enumerate(qs, 1):
                 st.write(f"**Q{i}. With reference to {topic}, consider the following statements:**")
                 for idx, s in enumerate(q["statements"], 1):
@@ -271,7 +271,7 @@ with tab2:
                 st.write("---")
 
         else:
-            qs = generate_assertion_reason(relevant, topic, num_q)
+            qs = generate_assertion_reason_refined(relevant, topic, num_q)
             for i, q in enumerate(qs, 1):
                 st.write(f"**Q{i}. Assertion (A):** {q['A']}")
                 st.write(f"**Reason (R):** {q['R']}")
