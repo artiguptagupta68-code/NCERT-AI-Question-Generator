@@ -113,32 +113,62 @@ def generate_subjective(topic, n, level):
         ]
     return random.sample(base * 2, n)
 
-def generate_mcqs(topic, n, level):
+def generate_mcqs(topic, n, level, subject):
     mcqs = []
-    for _ in range(n):
-        if level == "NCERT Level":
-            mcqs.append({
-                "q": f"What is meant by {topic}?",
-                "options": [
-                    f"A basic concept related to {topic}",
-                    "An unrelated term",
-                    "A historical accident",
-                    "A technological process"
-                ],
-                "ans": 0
-            })
-        else:
-            mcqs.append({
-                "q": f"With reference to {topic}, consider the following statements:",
-                "options": [
-                    "It strengthens democratic governance",
-                    "It weakens constitutionalism",
-                    "It has no relevance today",
-                    "It eliminates federal balance"
-                ],
-                "ans": 0
-            })
+    used_stems = set()
+
+    ncert_stems = [
+        f"What is meant by {topic}?",
+        f"Which of the following best describes {topic}?",
+        f"{topic} is important because:",
+        f"Which statement is correct regarding {topic}?"
+    ]
+
+    upsc_stems = [
+        f"With reference to {topic}, consider the following statements:",
+        f"In the context of Indian governance, {topic} implies:",
+        f"{topic} is often discussed in public policy debates because:",
+        f"Which of the following are implications of {topic}?"
+    ]
+
+    correct_options = [
+        "It strengthens democratic governance",
+        "It promotes cooperative federalism",
+        "It supports constitutional objectives",
+        "It enhances state capacity and service delivery"
+    ]
+
+    wrong_options = [
+        "It weakens constitutionalism",
+        "It has no relevance in present times",
+        "It eliminates federal balance",
+        "It bypasses democratic accountability",
+        "It centralizes power without checks"
+    ]
+
+    stems = upsc_stems if level == "UPSC Level" else ncert_stems
+
+    while len(mcqs) < n:
+        stem = random.choice(stems)
+
+        if stem in used_stems:
+            continue
+        used_stems.add(stem)
+
+        correct = random.choice(correct_options)
+        distractors = random.sample(wrong_options, 3)
+
+        options = distractors + [correct]
+        random.shuffle(options)
+
+        mcqs.append({
+            "question": stem,
+            "options": options,
+            "answer": options.index(correct)
+        })
+
     return mcqs
+
 
 # =========================
 # SIDEBAR
