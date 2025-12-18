@@ -225,12 +225,10 @@ with tab2:
 
         st.success("MCQs Generated")
         for i, m in enumerate(mcqs, 1):
-    st.write(f"**Q{i}. {m['question']}**")
-
-    for j, o in enumerate(m["options"]):
-        st.write(f"{chr(97+j)}) {o}")
-
-    st.write(f"✅ **Answer:** {chr(97 + m['answer'])}")
-    st.write("---")
+            st.write(f"**Q{i}. {m['question']}**")
+            for j, o in enumerate(m["options"]):
+                st.write(f"{chr(97+j)}) {o}")
+                st.write(f"✅ **Answer:** {chr(97 + m['answer'])}")
+                st.write("---")
 
 
