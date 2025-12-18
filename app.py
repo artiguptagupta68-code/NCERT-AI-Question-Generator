@@ -229,9 +229,18 @@ with tab2:
             relevant = chunks[:15]
         mcqs = generate_mcqs_contextual(relevant, topic, num_q, level, subject)
         st.success(f"Generated {len(mcqs)} MCQs ({level})")
-        for i, mcq in enumerate(mcqs, 1):
-            st.write(f"**Q{i}. {mcq['question']}**")
-            for idx, opt in enumerate(mcq["options"]):
-                st.write(f"{chr(97+idx)}) {opt}")
-            st.write(f"✅ **Answer:** {chr(97 + mcq['answer'])}")
-            st.write("---")
+        # Display MCQ options
+for i, mcq in enumerate(mcqs, 1):
+    st.write(f"**Q{i}. {mcq['question']}**")
+    for idx, opt in enumerate(mcq["options"]):
+        st.write(f"{chr(97+idx)}) {opt}")
+    
+    # Display answer(s) correctly
+    if isinstance(mcq['answer'], list):  # UPSC: multiple answers
+        answers = ", ".join([chr(97 + a) for a in mcq['answer']])
+        st.write(f"✅ **Answer(s):** {answers}")
+    else:  # NCERT: single answer
+        st.write(f"✅ **Answer:** {chr(97 + mcq['answer'])}")
+    
+    st.write("---")
+
