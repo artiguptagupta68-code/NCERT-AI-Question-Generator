@@ -191,7 +191,8 @@ with tab2:
         chunks = build_chunks(texts)
         relevant = boolean_filter(chunks, topic, subject)
 
-        mcqs = generate_mcqs(topic, num_q, level)
+        mcqs = generate_mcqs(topic, num_q, level, subject)
+)
 
         st.success("MCQs Generated")
         for i, m in enumerate(mcqs, 1):
