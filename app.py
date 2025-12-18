@@ -245,10 +245,9 @@ with tab2:
         st.success(f"Generated {len(mcqs)} MCQs ({level})")
         for i, mcq in enumerate(mcqs, 1):
             st.write(f"**Q{i}. {mcq['question']}**")
-            for idx, opt in enumerate(mcq["options"]):
-                st.write(f"{chr(97+idx)}) {opt}")
-            st.write(f"✅ **Answer:** {chr(97 + mcq['answer'])}")
-            st.write("---")
+for idx, opt in enumerate(mcq["options"]):
+    st.write(f"{chr(97+idx)}) {opt}")
+st.write(f"✅ **Answer:** {chr(97 + mcq['answer'])}")
 
 
 
