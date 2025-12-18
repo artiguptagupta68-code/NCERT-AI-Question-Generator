@@ -69,41 +69,27 @@ st.title("📘 NCERT Question Generator (Class XI–XII)")
 # =========================
 def download_zip():
     if not os.path.exists(ZIP_PATH):
-        url = f"https://drive.google.com/uc?id={FILE_ID}"  # Correct download URL
+        url = f"https://drive.google.com/uc?id={FILE_ID}"  # Correct format
         gdown.download(url, ZIP_PATH, quiet=False)
 
 def extract_zip():
+    """Extract the main ZIP file"""
     if not os.path.exists(EXTRACT_DIR):
         with zipfile.ZipFile(ZIP_PATH, "r") as z:
             z.extractall(EXTRACT_DIR)
-            st.write("Files extracted:")
-for path in Path(EXTRACT_DIR).rglob("*"):
-    st.write(path)
+    extract_nested_zips()  # extract nested ZIPs
 
+def extract_nested_zips(base_dir=EXTRACT_DIR):
+    """Recursively extract all nested ZIPs inside the extracted folder"""
+    for root, dirs, files in os.walk(base_dir):
+        for file in files:
+            if file.lower().endswith(".zip"):
+                nested_zip_path = os.path.join(root, file)
+                nested_extract_dir = os.path.join(root, Path(file).stem)
+                os.makedirs(nested_extract_dir, exist_ok=True)
+                with zipfile.ZipFile(nested_zip_path, "r") as nz:
+                    nz.extractall(nested_extract_dir)
 
-def read_pdf(path):
-    try:
-        reader = PdfReader(path)
-        return " ".join(page.extract_text() or "" for page in reader.pages)
-    except:
-        return ""
-
-def clean_text(text):
-    text = re.sub(r"(instructions|time allowed|marks|copyright).*", " ", text, flags=re.I)
-    text = re.sub(r"\s+", " ", text)
-    return text.strip()
-
-# =========================
-# LOAD CONTENT
-# =========================
-def load_texts(subject):
-    texts = []
-    for pdf in Path(EXTRACT_DIR).rglob("*.pdf"):
-        raw = clean_text(read_pdf(str(pdf)))
-        if len(raw.split()) < 50:  # reduce minimum words
-            continue
-        texts.append(raw)  # load all PDFs
-    return texts
 
 
 
