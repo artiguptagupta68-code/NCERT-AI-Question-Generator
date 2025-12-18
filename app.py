@@ -230,7 +230,7 @@ with tab2:
         mcqs = generate_mcqs_contextual(relevant, topic, num_q, level, subject)
         st.success(f"Generated {len(mcqs)} MCQs ({level})")
         # Display MCQ options
-for i, mcq in enumerate(mcqs, 1):
+for i, mcq in enumerate(mcq, 1):
     st.write(f"**Q{i}. {mcq['question']}**")
     for idx, opt in enumerate(mcq["options"]):
         st.write(f"{chr(97+idx)}) {opt}")
