@@ -98,9 +98,9 @@ def load_texts(subject):
         raw = clean_text(read_pdf(str(pdf)))
         if len(raw.split()) < 150:
             continue
-        if any(k in raw.lower() for k in SUBJECT_KEYWORDS[subject]):
-            texts.append(raw)
+        texts.append(raw)   # remove keyword filtering
     return texts
+
 
 def chunk_text(text):
     paras = re.split(r"\n\s*\n", text)
