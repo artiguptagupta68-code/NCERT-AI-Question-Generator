@@ -68,19 +68,23 @@ st.title("📘 NCERT Question Generator (Class XI–XII)")
 # UTILITIES
 # =========================
 def download_zip():
+    """Download the NCERT ZIP from Google Drive if it doesn't exist"""
     if not os.path.exists(ZIP_PATH):
-        url = f"https://drive.google.com/uc?id={FILE_ID}"  # Correct format
+        url = f"https://drive.google.com/uc?id={FILE_ID}"
         gdown.download(url, ZIP_PATH, quiet=False)
 
 def extract_zip():
-    """Extract the main ZIP file"""
+    """Extract the main ZIP and all nested class-level ZIPs"""
     if not os.path.exists(EXTRACT_DIR):
-        with zipfile.ZipFile(ZIP_PATH, "r") as z:
-            z.extractall(EXTRACT_DIR)
-    extract_nested_zips()  # extract nested ZIPs
+        os.makedirs(EXTRACT_DIR, exist_ok=True)
+    # Extract main ZIP
+    with zipfile.ZipFile(ZIP_PATH, "r") as z:
+        z.extractall(EXTRACT_DIR)
+    # Extract all nested ZIPs
+    extract_nested_zips(EXTRACT_DIR)
 
-def extract_nested_zips(base_dir=EXTRACT_DIR):
-    """Recursively extract all nested ZIPs inside the extracted folder"""
+def extract_nested_zips(base_dir):
+    """Recursively extract all ZIPs inside a folder"""
     for root, dirs, files in os.walk(base_dir):
         for file in files:
             if file.lower().endswith(".zip"):
@@ -90,10 +94,34 @@ def extract_nested_zips(base_dir=EXTRACT_DIR):
                 with zipfile.ZipFile(nested_zip_path, "r") as nz:
                     nz.extractall(nested_extract_dir)
 
+def read_pdf(path):
+    """Read text from PDF safely"""
+    try:
+        reader = PdfReader(path)
+        return " ".join(page.extract_text() or "" for page in reader.pages)
+    except:
+        return ""
 
+def clean_text(text):
+    text = re.sub(r"(instructions|time allowed|marks|copyright).*", " ", text, flags=re.I)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
 
+# =========================
+# LOAD CONTENT
+# =========================
+def load_texts(subject):
+    """Load all PDFs for the given subject"""
+    texts = []
+    for pdf in Path(EXTRACT_DIR).rglob("*.pdf"):
+        raw = clean_text(read_pdf(str(pdf)))
+        if len(raw.split()) < 50:  # reduce min words to include more content
+            continue
+        texts.append(raw)
+    return texts
 
 def chunk_text(text):
+    """Split text into manageable chunks for question generation"""
     paras = re.split(r"\n\s*\n", text)
     return [p.strip() for p in paras if 60 <= len(p.split()) <= 200]
 
@@ -151,7 +179,7 @@ topic = st.text_input("Enter Topic / Chapter (e.g. Constitution, Writ, GDP)")
 num_q = st.number_input("Number of Questions", 1, 10, 5)
 
 # =========================
-# GENERATE
+# GENERATE QUESTIONS
 # =========================
 if st.button("Generate Questions"):
     if not topic.strip():
@@ -160,7 +188,7 @@ if st.button("Generate Questions"):
 
     texts = load_texts(subject)
     if not texts:
-        st.error(f"No readable NCERT content found for {subject}.")
+        st.error(f"No readable NCERT content found for {subject}. Make sure ZIP is loaded and contains PDFs.")
         st.stop()
 
     chunks = []
