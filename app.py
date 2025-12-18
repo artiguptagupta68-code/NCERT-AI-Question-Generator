@@ -94,35 +94,78 @@ def is_valid_question(q):
 # =========================
 # MCQ GENERATION
 # =========================
+import random
+import re
+
 def generate_mcqs_dynamic(chunks, topic, n, level, subject):
+    """
+    Generate MCQs dynamically from text chunks
+    - chunks: list of semantically chunked text
+    - topic: topic string
+    - n: number of questions
+    - level: "NCERT Level" or "UPSC Level"
+    - subject: subject name for context
+    """
     mcqs = []
+    used_questions = set()
+    
+    # Extract keywords for distractors
+    keywords = [k.lower() for k in SUBJECT_KEYWORDS.get(subject, [])]
+    
     random.shuffle(chunks)
+    
     for chunk in chunks:
-        # pick a base sentence containing the topic
-        sentences = [s for s in re.split(r'(?<=[.?!])\s+', chunk) if topic.lower() in s.lower()]
+        # Extract potential statements containing the topic
+        sentences = [s.strip() for s in re.split(r'(?<=[.?!])\s+', chunk) if topic.lower() in s.lower()]
         if not sentences:
             continue
-        base_sentence = sentences[0]
-        # distractors: pick other sentences from chunk not same as answer
-        distractors = [s for s in re.split(r'(?<=[.?!])\s+', chunk) if s.strip() != base_sentence]
-        distractors = random.sample(distractors, min(3, len(distractors)))
-        # format MCQ
-        mcq = {
-            "question": f"Which of the following statements best describes: {topic}?",
-            "options": [base_sentence] + distractors,
-            "answer": 0
-        }
-        mcqs.append(mcq)
+        
+        for base_sentence in sentences:
+            if len(mcqs) >= n:
+                break
+            
+            question = f"Which of the following statements about {topic} is correct?"
+            
+            # Correct answer is the base sentence (trimmed for MCQ clarity)
+            answer = base_sentence.strip()
+            
+            # Potential distractors from the same chunk
+            potential_distractors = [
+                s.strip() for s in re.split(r'(?<=[.?!])\s+', chunk)
+                if s.strip() != answer and any(k in s.lower() for k in keywords)
+            ]
+            
+            # Ensure we have exactly 3 distractors
+            distractors = random.sample(potential_distractors, min(3, len(potential_distractors)))
+            while len(distractors) < 3:
+                # Add generic plausible distractors if needed
+                distractors.append("Not applicable / Incorrect statement")
+            
+            options = [answer] + distractors
+            random.shuffle(options)
+            correct_index = options.index(answer)
+            
+            if question not in used_questions:
+                mcqs.append({
+                    "question": question,
+                    "options": options,
+                    "answer": correct_index
+                })
+                used_questions.add(question)
+                
         if len(mcqs) >= n:
             break
-    # fallback if not enough questions
+    
+    # Fallback if not enough questions generated
     while len(mcqs) < n:
         mcqs.append({
             "question": f"What is {topic}?",
-            "options": ["Option1", "Option2", "Option3", "Option4"],
+            "options": [f"{topic} is important", "Not relevant", "Unrelated", "Random fact"],
             "answer": 0
         })
+    
     return mcqs
+
 
 # =========================
 # LOAD TEXTS
