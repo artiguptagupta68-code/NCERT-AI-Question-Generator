@@ -76,6 +76,10 @@ def extract_zip():
     if not os.path.exists(EXTRACT_DIR):
         with zipfile.ZipFile(ZIP_PATH, "r") as z:
             z.extractall(EXTRACT_DIR)
+            st.write("Files extracted:")
+for path in Path(EXTRACT_DIR).rglob("*"):
+    st.write(path)
+
 
 def read_pdf(path):
     try:
@@ -92,14 +96,15 @@ def clean_text(text):
 # =========================
 # LOAD CONTENT
 # =========================
-def load_texts(subject):
+ddef load_texts(subject):
     texts = []
     for pdf in Path(EXTRACT_DIR).rglob("*.pdf"):
         raw = clean_text(read_pdf(str(pdf)))
-        if len(raw.split()) < 150:
+        if len(raw.split()) < 50:  # reduce minimum words
             continue
-        texts.append(raw)   # remove keyword filtering
+        texts.append(raw)  # load all PDFs
     return texts
+
 
 
 def chunk_text(text):
