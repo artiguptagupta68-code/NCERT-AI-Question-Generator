@@ -71,6 +71,27 @@ def is_exam_worthy(s):
         return False
     return not any(b in s.lower() for b in bad)
 
+def classify_sentence(sentence):
+    s = sentence.lower()
+
+    if any(x in s for x in ["means", "refers to", "is defined as"]):
+        return "definition"
+
+    if any(x in s for x in ["ensures", "protects", "aims to", "seeks to"]):
+        return "function"
+
+    if any(x in s for x in ["therefore", "thus", "hence"]):
+        return "implication"
+
+    if any(x in s for x in ["for example", "such as"]):
+        return "example"
+
+    if any(x in s for x in ["article", "amendment", "schedule"]):
+        return "constitutional_fact"
+
+    return "ignore"
+
+
 # -------------------------------
 # SUBJECTIVE QUESTIONS (NCERT)
 # -------------------------------
@@ -86,25 +107,55 @@ def generate_subjective(chunks, topic, n):
 # -------------------------------
 # NCERT MCQs
 # -------------------------------
-def generate_ncert_mcqs(chunks, topic, n):
+def generate_ncert_mcqs_refined(chunks, topic, n):
     mcqs = []
-    for ch in chunks:
-        sents = [s for s in re.split(r'[.;]', ch) if is_exam_worthy(s)]
-        if not sents:
-            continue
-        correct = sents[0]
-        distractors = random.sample(sents[1:], min(3, len(sents)-1))
-        options = [correct] + distractors
-        random.shuffle(options)
 
-        mcqs.append({
-            "q": f"Which of the following best describes {topic}?",
-            "options": options,
-            "answer": options.index(correct)
-        })
-        if len(mcqs) >= n:
-            break
+    for ch in chunks:
+        sentences = re.split(r'[.;]', ch)
+        for s in sentences:
+            s = s.strip()
+            if topic.lower() not in s.lower():
+                continue
+
+            kind = classify_sentence(s)
+
+            if kind == "definition":
+                question = f"What is meant by {topic}?"
+                correct = s
+
+                distractors = [
+                    f"It is a political ideology",
+                    f"It is a government policy",
+                    f"It is a temporary legal arrangement"
+                ]
+
+            elif kind == "function":
+                question = f"Why is {topic} important?"
+                correct = s
+
+                distractors = [
+                    f"It centralises all political power",
+                    f"It weakens democratic institutions",
+                    f"It reduces citizen participation"
+                ]
+
+            else:
+                continue
+
+            options = [correct] + distractors
+            random.shuffle(options)
+
+            mcqs.append({
+                "q": question,
+                "options": options,
+                "answer": options.index(correct)
+            })
+
+            if len(mcqs) >= n:
+                return mcqs
+
     return mcqs
+
 
 # -------------------------------
 # UPSC PYQ – Statement Based
