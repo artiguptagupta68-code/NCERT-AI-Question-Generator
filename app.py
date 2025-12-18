@@ -70,7 +70,6 @@ for root, _, files in os.walk(EXTRACT_DIR):
 
 print("Total PDFs found:", pdf_count)
 print("Pages with extractable text:", text_pages)
-
 return texts, pdf_count, page_count
 
 def semantic_chunk(text):
