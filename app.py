@@ -117,56 +117,67 @@ def boolean_filter(chunks, topic, subject):
 # =========================
 # QUESTION GENERATION
 # =========================
-def generate_mcqs_dynamic(topic, chunks, n, level="NCERT"):
+def generate_mcqs_dynamic(topic, chunks, n, subject, level="NCERT Level"):
+    """
+    Generates UPSC/NCERT standard MCQs from chunks.
+    """
     mcqs = []
-    seen_questions = set()
+    used_questions = set()
+    
+    # Flatten text for distractor pool
+    pool_text = " ".join(chunks)
+    
     random.shuffle(chunks)
-
     for chunk in chunks:
         if len(mcqs) >= n:
             break
-        # Generate question text based on chunk and level
-        if level == "NCERT":
-            question_text = f"Which of the following statements best describes {topic}?"
-        else:  # UPSC level
-            question_text = f"Consider the following statements about {topic}. Identify the correct one."
-
-        if question_text in seen_questions:
+        sentences = re.split(r'(?<=[.?!])\s+', chunk)
+        relevant_sentences = [s for s in sentences if topic.lower() in s.lower()]
+        if not relevant_sentences:
             continue
-        seen_questions.add(question_text)
-
-        # Generate options dynamically (short, concise)
-        options = [
-            f"It strengthens {topic}",
-            f"It weakens {topic}",
-            f"It has no relevance today",
-            f"It supports constitutional objectives"
-        ]
-        # Correct answer index (always first for simplicity)
-        correct_index = 0
-
-        # Shuffle options while keeping track of correct answer
-        combined = list(enumerate(options))
-        random.shuffle(combined)
-        options_shuffled = [opt for idx, opt in combined]
-        correct_index = [i for i, (idx, _) in enumerate(combined) if idx == 0][0]
-
+        base_sentence = random.choice(relevant_sentences)
+        
+        # Question construction
+        if level == "NCERT Level":
+            question = f"What is/are described in the following statement? \n\n{base_sentence}"
+        else:  # UPSC Level
+            question = f"Consider the following statement:\n\n{base_sentence}\n\nWhich of the following is correct?"
+        
+        # Distractors: pick other sentences containing subject keywords but not the answer
+        distractors = []
+        answer = base_sentence.strip()
+        keywords = SUBJECT_KEYWORDS[subject]
+        potential_distractors = [s for s in re.split(r'(?<=[.?!])\s+', pool_text)
+                                 if any(k in s.lower() for k in keywords)
+                                 and s.strip() != answer]
+        random.shuffle(potential_distractors)
+        for d in potential_distractors:
+            if len(distractors) >= 3:
+                break
+            distractors.append(d.strip())
+        
+        # Ensure 3 distractors
+        while len(distractors) < 3:
+            distractors.append("None of the above")  # fallback placeholder
+        
+        # Shuffle options
+        options = [answer] + distractors
+        random.shuffle(options)
+        correct_idx = options.index(answer)
+        
+        # Avoid duplicates
+        if question in used_questions:
+            continue
+        used_questions.add(question)
+        
         mcqs.append({
-            "question": question_text,
-            "options": options_shuffled,
-            "answer": correct_index
+            "q": question,
+            "options": options,
+            "ans": correct_idx
         })
-
-    # If not enough MCQs, fill with fallback
-    while len(mcqs) < n:
-        fallback_opts = ["Option1", "Option2", "Option3", "Option4"]
-        mcqs.append({
-            "question": f"What is {topic}?",
-            "options": fallback_opts,
-            "answer": 0
-        })
-
+    
     return mcqs
+
 
 
 
