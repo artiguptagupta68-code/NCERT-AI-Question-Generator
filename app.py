@@ -54,22 +54,22 @@ def download_and_extract():
         with zipfile.ZipFile(ZIP_PATH, "r") as z:
             z.extractall(EXTRACT_DIR)
 
-def load_all_pdf_text():
-    texts = []
-    pdf_count = 0
-    page_count = 0
+from pypdf import PdfReader
+pdf_count = 0
+text_pages = 0
 
-    for pdf in Path(EXTRACT_DIR).rglob("*.pdf"):
-        pdf_count += 1
-        try:
-            reader = PdfReader(str(pdf))
+for root, _, files in os.walk(EXTRACT_DIR):
+    for file in files:
+        if file.lower().endswith(".pdf"):
+            pdf_count += 1
+            path = os.path.join(root, file)
+            reader = PdfReader(path)
             for page in reader.pages:
-                txt = page.extract_text()
-                if txt and len(txt.split()) > 20:
-                    texts.append(txt)
-                    page_count += 1
-        except:
-            continue
+                if page.extract_text():
+                    text_pages += 1
+
+print("Total PDFs found:", pdf_count)
+print("Pages with extractable text:", text_pages)
 
     return texts, pdf_count, page_count
 
