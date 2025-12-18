@@ -191,7 +191,7 @@ with tab2:
     )
     if st.button("Generate MCQs", key="mcq"):
         if mcq_type=="NCERT MCQs":
-            mcqs = generate_ncert_mcqs((topic, n)
+            mcqs = generate_ncert_mcqs(topic, n)
             for i,m in enumerate(mcqs,1):
                 st.write(f"**Q{i}. {m['q']}**")
                 for j,opt in enumerate(m['options']):
