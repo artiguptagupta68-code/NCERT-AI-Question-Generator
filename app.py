@@ -86,6 +86,24 @@ def build_chunks(texts):
     return chunks
 
 # =========================
+# SEMANTIC CHUNKING
+# =========================
+def semantic_chunk(text):
+    """
+    Splits text into semantic chunks for question generation.
+    Each chunk is ~3–5 sentences long, and only included if length > 30 words.
+    """
+    import re
+    sentences = re.split(r'(?<=[.?!])\s+', text)
+    chunks = []
+    for i in range(0, len(sentences), 4):  # 4 sentences per chunk
+        chunk = " ".join(sentences[i:i+4])
+        if len(chunk.split()) > 30:
+            chunks.append(chunk)
+    return chunks
+
+
+# =========================
 # FILTERING
 # =========================
 def boolean_filter(chunks, topic, subject):
