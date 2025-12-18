@@ -99,40 +99,54 @@ def boolean_filter(chunks, topic, subject):
 # =========================
 # QUESTION GENERATION
 # =========================
-def generate_mcqs_dynamic(topic, n, level, subject, chunks):
+def generate_mcqs_dynamic(topic, chunks, n, level="NCERT"):
     mcqs = []
-    used = set()
+    seen_questions = set()
     random.shuffle(chunks)
 
-    for i in range(n):
-        # Select a chunk to base the question on
-        chunk = random.choice(chunks)
-        # Ensure we don’t repeat questions
-        if chunk in used:
+    for chunk in chunks:
+        if len(mcqs) >= n:
+            break
+        # Generate question text based on chunk and level
+        if level == "NCERT":
+            question_text = f"Which of the following statements best describes {topic}?"
+        else:  # UPSC level
+            question_text = f"Consider the following statements about {topic}. Identify the correct one."
+
+        if question_text in seen_questions:
             continue
-        used.add(chunk)
+        seen_questions.add(question_text)
 
-        # Create the question
-        question_text = f"Which of the following statements best describes {topic} ?"
+        # Generate options dynamically (short, concise)
+        options = [
+            f"It strengthens {topic}",
+            f"It weakens {topic}",
+            f"It has no relevance today",
+            f"It supports constitutional objectives"
+        ]
+        # Correct answer index (always first for simplicity)
+        correct_index = 0
 
-        # Create distractors (dummy options from other chunks)
-        distractors = random.sample([c for c in chunks if c != chunk], min(3, len(chunks)-1))
-
-        # Options: correct answer first
-        options = [chunk] + distractors
-        random.shuffle(options)  # Shuffle options
-
-        # Store the index of the correct answer after shuffling
-        answer_idx = options.index(chunk)
+        # Shuffle options while keeping track of correct answer
+        combined = list(enumerate(options))
+        random.shuffle(combined)
+        options_shuffled = [opt for idx, opt in combined]
+        correct_index = [i for i, (idx, _) in enumerate(combined) if idx == 0][0]
 
         mcqs.append({
             "question": question_text,
-            "options": options,
-            "answer": answer_idx
+            "options": options_shuffled,
+            "answer": correct_index
         })
 
-        if len(mcqs) >= n:
-            break
+    # If not enough MCQs, fill with fallback
+    while len(mcqs) < n:
+        fallback_opts = ["Option1", "Option2", "Option3", "Option4"]
+        mcqs.append({
+            "question": f"What is {topic}?",
+            "options": fallback_opts,
+            "answer": 0
+        })
 
     return mcqs
 
@@ -182,22 +196,31 @@ with tab1:
 with tab2:
     if st.button("Generate MCQs"):
         if not topic.strip():
-            st.warning("Please enter a topic")
+            st.warning("Enter a topic")
             st.stop()
 
         texts = load_all_texts()
-        chunks = build_chunks(texts)
+        if not texts:
+            st.error("No readable NCERT PDFs found")
+            st.stop()
+
+        chunks = []
+        for t in texts:
+            chunks.extend(semantic_chunk(t))
+
         relevant = boolean_filter(chunks, topic, subject)
+        if len(relevant) < 5:
+            relevant = chunks[:15]
 
-        mcqs = generate_mcqs_dynamic(topic, num_q, level, subject,chunks)
+        mcqs = generate_mcqs_dynamic(topic, relevant, num_q, level)
 
-        st.success("MCQs Generated")
+        st.success(f"Generated {len(mcqs)} MCQs ({level})")
         for i, mcq in enumerate(mcqs, 1):
             st.write(f"**Q{i}. {mcq['question']}**")
             for idx, opt in enumerate(mcq["options"]):
                 st.write(f"{chr(97+idx)}) {opt}")
-                st.write(f"✅ **Answer:** {chr(97 + mcq['answer'])}")
-                st.write("---")
+            st.write(f"✅ **Answer:** {chr(97 + mcq['answer'])}")
+            st.write("---")
 
 
 
