@@ -216,7 +216,7 @@ with tab2:
         if len(relevant) < 5:
             relevant = chunks[:15]
 
-        mcqs = generate_mcqs_contextual(relevant, topic, num_q, subject)
+        mcqs = generate_mcqs_contextual(relevant, topic, num_q, level, subject)
         st.success(f"Generated {len(mcqs)} UPSC-style MCQs")
 
         for i, mcq in enumerate(mcqs, 1):
