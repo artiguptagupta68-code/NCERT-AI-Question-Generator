@@ -73,7 +73,7 @@ def classify_sentence(sentence):
 # -------------------------------
 # SUBJECTIVE QUESTIONS
 # -------------------------------
-def generate_subjective(topic, n):
+def generate_subjective(chunks, topic, n):
     templates = [
         f"Explain the concept of {topic}.",
         f"Discuss the significance of {topic}.",
@@ -191,7 +191,7 @@ with tab2:
     )
     if st.button("Generate MCQs", key="mcq"):
         if mcq_type=="NCERT MCQs":
-            mcqs = generate_ncert_mcqs(topic, n)
+            mcqs = generate_ncert_mcqs(chunks, topic, n)
             for i,m in enumerate(mcqs,1):
                 st.write(f"**Q{i}. {m['q']}**")
                 for j,opt in enumerate(m['options']):
