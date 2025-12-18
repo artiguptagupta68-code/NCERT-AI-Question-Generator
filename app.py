@@ -1,6 +1,6 @@
-# =========================================================
-# NCERT & UPSC Question Generator (FINAL – EXAM READY)
-# =========================================================
+# ===============================
+# NCERT + UPSC Exam-Ready Generator
+# ===============================
 
 import os, zipfile, re, random
 from pathlib import Path
@@ -8,9 +8,9 @@ import streamlit as st
 import gdown
 from pypdf import PdfReader
 
-# ----------------------------
+# -------------------------------
 # CONFIG
-# ----------------------------
+# -------------------------------
 FILE_ID = "1gdiCsGOeIyaDlJ--9qon8VTya3dbjr6G"
 ZIP_PATH = "ncert_books.zip"
 EXTRACT_DIR = "ncert_data"
@@ -18,22 +18,22 @@ EXTRACT_DIR = "ncert_data"
 SUBJECTS = ["Polity", "Sociology", "Psychology", "Business Studies", "Economics"]
 
 SUBJECT_KEYWORDS = {
-    "Polity": ["constitution", "preamble", "rights", "federalism", "judiciary", "parliament"],
-    "Sociology": ["society", "caste", "class", "gender", "movement"],
-    "Psychology": ["learning", "memory", "emotion", "motivation"],
-    "Business Studies": ["management", "planning", "organising", "marketing"],
-    "Economics": ["growth", "development", "poverty", "inflation", "gdp"]
+    "Polity": ["constitution", "preamble", "rights", "federalism", "parliament"],
+    "Economics": ["growth", "development", "inflation", "poverty"],
+    "Sociology": ["society", "equality", "justice", "movement"],
+    "Psychology": ["learning", "memory", "emotion"],
+    "Business Studies": ["management", "planning", "organisation"]
 }
 
-# ----------------------------
+# -------------------------------
 # STREAMLIT SETUP
-# ----------------------------
-st.set_page_config("NCERT & UPSC Question Generator", layout="wide")
-st.title("📘 NCERT & UPSC Context-Aware Question Generator")
+# -------------------------------
+st.set_page_config("NCERT & UPSC Generator", layout="wide")
+st.title("📘 NCERT & UPSC Exam-Ready Question Generator")
 
-# ----------------------------
+# -------------------------------
 # UTILITIES
-# ----------------------------
+# -------------------------------
 def download_and_extract():
     if not os.path.exists(ZIP_PATH):
         gdown.download(f"https://drive.google.com/uc?id={FILE_ID}", ZIP_PATH, quiet=False)
@@ -49,205 +49,167 @@ def read_pdf(path):
         return ""
 
 def clean_text(text):
-    text = re.sub(r"\s+", " ", text)
-    return text.strip()
+    text = re.sub(r"(activity|let us|exercise|project|editor|reprint|copyright).*",
+                  " ", text, flags=re.I)
+    return re.sub(r"\s+", " ", text).strip()
 
 def load_all_texts():
     texts = []
     for pdf in Path(EXTRACT_DIR).rglob("*.pdf"):
-        txt = clean_text(read_pdf(str(pdf)))
-        if len(txt.split()) > 200:
-            texts.append(txt)
+        t = clean_text(read_pdf(str(pdf)))
+        if len(t.split()) > 200:
+            texts.append(t)
     return texts
 
 def semantic_chunks(text):
     sents = re.split(r'(?<=[.])\s+', text)
-    chunks = []
-    for i in range(0, len(sents), 4):
-        ch = " ".join(sents[i:i+4])
-        if 60 <= len(ch.split()) <= 180:
-            chunks.append(ch)
-    return chunks
+    return [" ".join(sents[i:i+3]) for i in range(0, len(sents), 3)]
 
-# ----------------------------
-# HARD CONTENT FILTER
-# ----------------------------
-def is_content_sentence(s):
-    banned = [
-        "let’s", "let us", "debate", "activity", "exercise",
-        "write a short note", "discuss", "do you think",
-        "project", "answer the following"
-    ]
-    s_low = s.lower()
-    if len(s.split()) < 8 or len(s.split()) > 30:
+def is_exam_worthy(s):
+    bad = ["activity", "debate", "editor", "project", "let us"]
+    if len(s.split()) < 10 or len(s.split()) > 35:
         return False
-    return not any(b in s_low for b in banned)
+    return not any(b in s.lower() for b in bad)
 
-# ----------------------------
+# -------------------------------
 # SUBJECTIVE QUESTIONS (NCERT)
-# ----------------------------
-SUBJECTIVE_PATTERNS = [
-    "Define {c}.",
-    "Explain the meaning of {c}.",
-    "Describe the significance of {c}.",
-    "What do you understand by {c}?",
-    "Explain the role of {c}."
-]
-
-def extract_concepts(chunk, topic):
-    concepts = re.findall(r"\b[A-Z][a-zA-Z ]{3,40}\b", chunk)
-    if topic.lower() not in " ".join(concepts).lower():
-        concepts.append(topic)
-    return list(dict.fromkeys(concepts))[:4]
-
+# -------------------------------
 def generate_subjective(chunks, topic, n):
-    qs, used = [], set()
+    qs = []
     for ch in chunks:
-        if topic.lower() not in ch.lower():
-            continue
-        for c in extract_concepts(ch, topic):
-            for p in SUBJECTIVE_PATTERNS:
-                q = p.format(c=c)
-                if q not in used:
-                    used.add(q)
-                    qs.append(q)
-                if len(qs) >= n:
-                    return qs
-    return qs
+        if topic.lower() in ch.lower():
+            qs.append(f"Explain the concept of {topic}.")
+        if len(qs) >= n:
+            break
+    return qs or [f"Explain {topic}."] * n
 
-# ----------------------------
+# -------------------------------
 # NCERT MCQs
-# ----------------------------
+# -------------------------------
 def generate_ncert_mcqs(chunks, topic, n):
     mcqs = []
     for ch in chunks:
-        if topic.lower() not in ch.lower():
+        sents = [s for s in re.split(r'[.;]', ch) if is_exam_worthy(s)]
+        if not sents:
             continue
-
-        sents = [s.strip() for s in re.split(r'[.;]', ch) if is_content_sentence(s)]
-        if len(sents) < 4:
-            continue
-
         correct = sents[0]
-        distractors = sents[1:4]
+        distractors = random.sample(sents[1:], min(3, len(sents)-1))
         options = [correct] + distractors
         random.shuffle(options)
 
         mcqs.append({
             "q": f"Which of the following best describes {topic}?",
             "options": options,
-            "ans": options.index(correct)
+            "answer": options.index(correct)
         })
-
         if len(mcqs) >= n:
             break
     return mcqs
 
-# ----------------------------
-# UPSC – STATEMENT BASED
-# ----------------------------
+# -------------------------------
+# UPSC PYQ – Statement Based
+# -------------------------------
 def generate_upsc_statements(chunks, topic, n):
-    mcqs = []
-    for ch in chunks:
-        if topic.lower() not in ch.lower():
-            continue
-
-        sents = [s.strip() for s in re.split(r'[.;]', ch) if is_content_sentence(s)]
-        if len(sents) < 3:
-            continue
-
-        mcqs.append({
-            "statements": sents[:3],
-            "options": [
-                "1 and 2 only",
-                "2 and 3 only",
-                "1 and 3 only",
-                "1, 2 and 3"
-            ],
-            "ans": 3
-        })
-
-        if len(mcqs) >= n:
-            break
-    return mcqs
-
-# ----------------------------
-# UPSC – ASSERTION REASON
-# ----------------------------
-def generate_assertion_reason(topic, n):
     qs = []
-    for _ in range(n):
-        qs.append({
-            "A": f"The {topic} reflects the basic philosophy of the Constitution.",
-            "R": f"The {topic} expresses the objectives and ideals of the state.",
-            "ans": 0
-        })
+    for ch in chunks:
+        sents = [s for s in re.split(r'[.;]', ch)
+                 if is_exam_worthy(s) and topic.lower() in s.lower()]
+        if len(sents) >= 3:
+            qs.append({
+                "statements": sents[:3],
+                "answer": "1, 2 and 3"
+            })
+        if len(qs) >= n:
+            break
     return qs
 
-# =========================================================
-# UI
-# =========================================================
-download_and_extract()
+# -------------------------------
+# UPSC PYQ – Assertion Reason
+# -------------------------------
+def generate_assertion_reason(chunks, topic, n):
+    qs = []
+    for ch in chunks:
+        sents = [s for s in re.split(r'[.;]', ch) if is_exam_worthy(s)]
+        if len(sents) >= 2:
+            qs.append({
+                "A": sents[0],
+                "R": sents[1],
+                "answer": "a"
+            })
+        if len(qs) >= n:
+            break
+    return qs
 
-subject = st.selectbox("Select Subject", SUBJECTS)
-topic = st.text_input("Enter Topic")
-num_q = st.number_input("Number of Questions", 1, 15, 5)
+# -------------------------------
+# SIDEBAR
+# -------------------------------
+with st.sidebar:
+    st.header("Settings")
+    if st.button("📥 Load NCERT PDFs"):
+        download_and_extract()
+        st.success("NCERT PDFs Loaded")
 
-tab1, tab2 = st.tabs(["📖 Subjective", "📝 MCQs"])
+subject = st.selectbox("Subject", SUBJECTS)
+topic = st.text_input("Topic (e.g. Preamble, Federalism)")
+num_q = st.number_input("Number of Questions", 1, 10, 5)
+
+# -------------------------------
+# TABS
+# -------------------------------
+tab1, tab2 = st.tabs(["Subjective", "MCQs"])
 
 texts = load_all_texts()
 chunks = []
 for t in texts:
     chunks.extend(semantic_chunks(t))
 
-# ----------------------------
+relevant = [c for c in chunks if topic.lower() in c.lower()]
+if not relevant:
+    relevant = chunks[:20]
+
+# -------------------------------
 # SUBJECTIVE TAB
-# ----------------------------
+# -------------------------------
 with tab1:
     if st.button("Generate Subjective Questions"):
-        qs = generate_subjective(chunks, topic, num_q)
+        qs = generate_subjective(relevant, topic, num_q)
         for i, q in enumerate(qs, 1):
             st.write(f"{i}. {q}")
 
-# ----------------------------
+# -------------------------------
 # MCQs TAB
-# ----------------------------
+# -------------------------------
 with tab2:
-    mcq_type = st.radio("Select MCQ Type", ["NCERT", "UPSC"])
+    mcq_type = st.radio("MCQ Type", ["NCERT MCQs", "UPSC PYQ – Statements", "UPSC PYQ – Assertion Reason"])
 
-    if mcq_type == "NCERT":
-        if st.button("Generate NCERT MCQs"):
-            mcqs = generate_ncert_mcqs(chunks, topic, num_q)
+    if st.button("Generate MCQs"):
+        if mcq_type == "NCERT MCQs":
+            mcqs = generate_ncert_mcqs(relevant, topic, num_q)
             for i, m in enumerate(mcqs, 1):
                 st.write(f"**Q{i}. {m['q']}**")
-                for j, o in enumerate(m["options"]):
-                    st.write(f"{chr(97+j)}) {o}")
-                st.write(f"✅ **Answer:** {chr(97+m['ans'])}")
+                for j, opt in enumerate(m["options"]):
+                    st.write(f"{chr(97+j)}) {opt}")
+                st.write(f"✅ Answer: {chr(97+m['answer'])}")
                 st.write("---")
 
-    else:
-        upsc_type = st.radio("UPSC Question Type", ["Statement-based", "Assertion–Reason"])
-
-        if upsc_type == "Statement-based" and st.button("Generate UPSC MCQs"):
-            mcqs = generate_upsc_statements(chunks, topic, num_q)
-            for i, m in enumerate(mcqs, 1):
-                st.write(f"**Q{i}. Consider the following statements:**")
-                for idx, s in enumerate(m["statements"], 1):
-                    st.write(f"{idx}. {s}")
-                for j, o in enumerate(m["options"]):
-                    st.write(f"{chr(97+j)}) {o}")
-                st.write(f"✅ **Answer:** {chr(97+m['ans'])}")
-                st.write("---")
-
-        if upsc_type == "Assertion–Reason" and st.button("Generate Assertion–Reason"):
-            qs = generate_assertion_reason(topic, num_q)
+        elif mcq_type == "UPSC PYQ – Statements":
+            qs = generate_upsc_statements(relevant, topic, num_q)
             for i, q in enumerate(qs, 1):
-                st.write(f"**Q{i}.**")
-                st.write(f"Assertion (A): {q['A']}")
-                st.write(f"Reason (R): {q['R']}")
-                st.write("a) Both A and R are true and R is the correct explanation of A")
-                st.write("b) Both A and R are true but R is not the correct explanation of A")
-                st.write("c) A is true but R is false")
-                st.write("d) A is false but R is true")
-                st.write("✅ **Answer:** a")
+                st.write(f"**Q{i}. With reference to {topic}, consider the following statements:**")
+                for idx, s in enumerate(q["statements"], 1):
+                    st.write(f"{idx}. {s}")
+                st.write("Which of the statements given above are correct?")
+                st.write(f"✅ Answer: {q['answer']}")
+                st.write("---")
+
+        else:
+            qs = generate_assertion_reason(relevant, topic, num_q)
+            for i, q in enumerate(qs, 1):
+                st.write(f"**Q{i}. Assertion (A):** {q['A']}")
+                st.write(f"**Reason (R):** {q['R']}")
+                st.write("a) Both A and R are true and R explains A")
+                st.write("b) Both A and R are true but R does not explain A")
+                st.write("c) A is true, R is false")
+                st.write("d) A is false, R is true")
+                st.write("✅ Answer: a")
                 st.write("---")
