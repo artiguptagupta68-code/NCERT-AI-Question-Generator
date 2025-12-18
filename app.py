@@ -96,7 +96,7 @@ def clean_text(text):
 # =========================
 # LOAD CONTENT
 # =========================
-ddef load_texts(subject):
+def load_texts(subject):
     texts = []
     for pdf in Path(EXTRACT_DIR).rglob("*.pdf"):
         raw = clean_text(read_pdf(str(pdf)))
