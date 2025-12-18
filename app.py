@@ -157,38 +157,55 @@ def generate_ncert_mcqs_refined(chunks, topic, n):
     return mcqs
 
 
+
 # -------------------------------
 # UPSC PYQ – Statement Based
 # -------------------------------
-def generate_upsc_statements(chunks, topic, n):
+def generate_upsc_statements_refined(chunks, topic, n):
     qs = []
+
     for ch in chunks:
-        sents = [s for s in re.split(r'[.;]', ch)
-                 if is_exam_worthy(s) and topic.lower() in s.lower()]
-        if len(sents) >= 3:
+        sentences = [
+            s.strip() for s in re.split(r'[.;]', ch)
+            if classify_sentence(s) in ["function", "implication", "constitutional_fact"]
+            and topic.lower() in s.lower()
+        ]
+
+        if len(sentences) >= 2:
             qs.append({
-                "statements": sents[:3],
-                "answer": "1, 2 and 3"
+                "statements": sentences[:3],
+                "answer": "1 and 2"
             })
+
         if len(qs) >= n:
             break
+
     return qs
+
 
 # -------------------------------
 # UPSC PYQ – Assertion Reason
 # -------------------------------
-def generate_assertion_reason(chunks, topic, n):
+def generate_assertion_reason_refined(chunks, topic, n):
     qs = []
+
     for ch in chunks:
-        sents = [s for s in re.split(r'[.;]', ch) if is_exam_worthy(s)]
-        if len(sents) >= 2:
+        sentences = [
+            s.strip() for s in re.split(r'[.;]', ch)
+            if classify_sentence(s) in ["definition", "function"]
+            and topic.lower() in s.lower()
+        ]
+
+        if len(sentences) >= 2:
             qs.append({
-                "A": sents[0],
-                "R": sents[1],
+                "A": sentences[0],
+                "R": sentences[1],
                 "answer": "a"
             })
+
         if len(qs) >= n:
             break
+
     return qs
 
 # -------------------------------
