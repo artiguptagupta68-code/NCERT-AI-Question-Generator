@@ -173,7 +173,19 @@ def generate_mcqs_exam_ready(chunks, topic, n, level, subject):
 # =========================
 # DISPLAY MCQs
 # =========================
+# =========================
+# TABS SETUP
+# =========================
+tab1, tab2 = st.tabs(["Subjective Questions", "MCQs"])
+
+# Subjective questions logic
+with tab1:
+    st.write("Subjective Questions will appear here.")
+    # ... your subjective generation code ...
+
+# MCQs logic
 with tab2:
+    st.write("MCQs will appear here.")
     if st.button("Generate MCQs"):
         if not topic.strip():
             st.warning("Enter a topic")
