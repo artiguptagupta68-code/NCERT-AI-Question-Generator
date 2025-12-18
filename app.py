@@ -8,14 +8,14 @@ import random
 import streamlit as st
 import gdown
 from pypdf import PdfReader
+from sentence_transformers import SentenceTransformer, util
 
 # =========================
 # CONFIG
 # =========================
-# NCERT Subject ZIP from Drive
 FILE_ID = "1l5tGbJcvwsPiiOyi-MZYoWzoTDGjTWOz"
 ZIP_PATH = "ncert_subjects.zip"
-EXTRACT_DIR = "ncert_subjects_data"
+EXTRACT_DIR = "ncert_data"
 
 SUBJECTS = [
     "Polity",
@@ -33,51 +33,45 @@ SUBJECT_KEYWORDS = {
     "Economics": ["economy", "gdp", "growth", "inflation", "poverty", "development"]
 }
 
+GENERIC_PATTERNS = [
+    "Which of the following is true about {c}?",
+    "The importance of {c} lies in:",
+    "Identify the correct statement about {c}:",
+    "Why is {c} significant in its context?"
+]
+
+# Load Sentence Transformer model
+model = SentenceTransformer('all-MiniLM-L6-v2')
+
 # =========================
-# STREAMLIT
+# STREAMLIT SETUP
 # =========================
-st.set_page_config(page_title="NCERT → UPSC Q Generator", layout="wide")
-st.title("📘 NCERT → UPSC-style Question Generator (Offline)")
+st.set_page_config(page_title="NCERT UPSC MCQ Generator", layout="wide")
+st.title("📘 NCERT UPSC-Style MCQ Generator")
 
 # =========================
 # UTILITIES
 # =========================
-def download_ncert_zip():
+def download_zip():
     if not os.path.exists(ZIP_PATH):
         url = f"https://drive.google.com/uc?id={FILE_ID}"
         gdown.download(url, ZIP_PATH, quiet=False)
 
-def extract_all_zips(base_dir):
-    """ Recursively extract nested ZIP files """
-    for _ in range(5):
-        for root, _, files in os.walk(base_dir):
-            for file in files:
-                if file.lower().endswith(".zip"):
-                    p = os.path.join(root, file)
-                    try:
-                        with zipfile.ZipFile(p, "r") as z:
-                            z.extractall(root)
-                        os.remove(p)
-                    except:
-                        pass
-
 def extract_zip():
-    os.makedirs(EXTRACT_DIR, exist_ok=True)
-    with zipfile.ZipFile(ZIP_PATH, "r") as z:
-        z.extractall(EXTRACT_DIR)
-    extract_all_zips(EXTRACT_DIR)
+    if not os.path.exists(EXTRACT_DIR):
+        with zipfile.ZipFile(ZIP_PATH, "r") as z:
+            z.extractall(EXTRACT_DIR)
 
 def read_pdf(path):
     try:
         reader = PdfReader(path)
         text = ""
         for page in reader.pages:
-            t = page.extract_text()
-            if t:
-                text += t + "\n"
+            txt = page.extract_text()
+            if txt:
+                text += txt + "\n"
         return text
-    except Exception as e:
-        st.warning(f"Failed to read PDF: {os.path.basename(path)} — {e}")
+    except:
         return ""
 
 def clean_text(text):
@@ -85,146 +79,125 @@ def clean_text(text):
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 
-# =========================
-# LOAD ALL TEXTS
-# =========================
+def semantic_chunking(text, max_sentences=5):
+    sentences = re.split(r'(?<=[.?!])\s+', text)
+    chunks = []
+    for i in range(0, len(sentences), max_sentences):
+        chunk = " ".join(sentences[i:i+max_sentences])
+        if len(chunk.split()) > 20:
+            chunks.append(chunk)
+    return chunks
 
-def load_all_texts():
-    texts = []
-    for pdf in Path(EXTRACT_DIR).rglob("*.pdf"):
-        try:
-            reader = PdfReader(str(pdf))
-            text = ""
-            for page in reader.pages:
-                page_text = page.extract_text()
-                if page_text:
-                    text += page_text + "\n"
-            text = clean_text(text)
-            if len(text.strip()) > 20:  # lower threshold to include more text
-                texts.append(text)
-        except Exception as e:
-            st.warning(f"Failed to read PDF {pdf.name}: {e}")
-    return texts
-all_pdfs = list(Path(EXTRACT_DIR).rglob("*.pdf"))
-st.text(f"Total PDFs found: {len(all_pdfs)}")
-
-
-def chunk_text(text):
-    paras = re.split(r"\n\s*\n", text)
-    return [p.strip() for p in paras if 60 <= len(p.split()) <= 200]
-
-# =========================
-# SEMANTIC FILTER
-# =========================
-def relevant_chunks(chunks, topic, subject):
+def filter_chunks(chunks, topic, subject):
+    filtered = []
     topic_lower = topic.lower()
-    matched = [c for c in chunks if topic_lower in c.lower()]
-    if len(matched) >= 3:
-        return matched
-    # fallback: subject keyword match
-    kws = SUBJECT_KEYWORDS.get(subject, [])
-    fallback = [c for c in chunks if any(k in c.lower() for k in kws)]
-    return fallback if fallback else chunks[:10]
-
-# =========================
-# QUESTION GENERATION
-# =========================
-GENERIC_SUBJECTIVE = [
-    "Explain the concept of {}.",
-    "Discuss {} in detail.",
-    "Why is {} important in context of {}?",
-    "Describe the main aspects of {}.",
-    "Analyse the role of {}.",
-    "Evaluate the significance of {}."
-]
-
-def generate_subjective_questions(chunks, topic, subject, n):
-    questions = []
-    seen = set()
-    for ch in chunks:
-        sent = re.split(r"(?<=[.?!])\s+", ch)
-        for s in sent:
-            if topic.lower() in s.lower() and len(s.split()) > 8:
-                q = random.choice(GENERIC_SUBJECTIVE).format(topic, subject)
-                if q not in seen:
-                    seen.add(q)
-                    questions.append(q)
-                if len(questions) >= n:
-                    return questions
-    # fallback
-    while len(questions) < n:
-        questions.append(random.choice(GENERIC_SUBJECTIVE).format(topic, subject))
-    return questions
-
-MCQ_PATTERNS = [
-    "Which of the following best describes {}?",
-    "What is the primary meaning of {}?",
-    "Which statement about {} is correct?",
-    "What does {} refer to in the context of {}?"
-]
-
-def generate_mcqs(chunks, topic, subject, n):
-    mcqs = []
-    seen = set()
+    keywords = SUBJECT_KEYWORDS[subject]
     for c in chunks:
-        key_phrase = topic
-        for pattern in MCQ_PATTERNS:
-            q = pattern.format(key_phrase, subject)
-            if q not in seen:
-                options = ["Option A", "Option B", "Option C", "Option D"]
-                answer = random.randint(0, 3)
-                mcqs.append({"question": q, "options": options, "answer": answer})
-                seen.add(q)
-            if len(mcqs) >= n:
-                return mcqs
+        c_lower = c.lower()
+        if topic_lower in c_lower or any(k in c_lower for k in keywords):
+            filtered.append(c)
+    return filtered
+
+def validate_mcq(mcq):
+    if len(mcq['question']) < 10:
+        return False
+    if len(mcq['options']) != 4:
+        return False
+    return True
+
+def extract_concepts(chunk, topic):
+    candidates = re.findall(r"\b([A-Z][a-zA-Z ]{3,40})\b", chunk)
+    if topic.lower() not in " ".join(candidates).lower():
+        candidates.append(topic)
+    return list(set(candidates))[:5]
+
+def generate_mcqs(chunks, topic, num_q):
+    mcqs = []
+    used = set()
+    random.shuffle(chunks)
+
+    for chunk in chunks:
+        concepts = extract_concepts(chunk, topic)
+        for concept in concepts:
+            template = random.choice(GENERIC_PATTERNS)
+            question = template.format(c=concept)
+            if question in used:
+                continue
+
+            correct = f"{concept} is key in its context."
+            distractors = random.sample([
+                "Not related concept",
+                "Opposite statement",
+                "Different topic",
+                "Unrelated fact",
+                "Incorrect statement"
+            ], 3)
+            options = [correct] + distractors
+            random.shuffle(options)
+            answer_index = options.index(correct)
+
+            mcq = {"question": question, "options": options, "answer": answer_index}
+            if validate_mcq(mcq):
+                mcqs.append(mcq)
+                used.add(question)
+                if len(mcqs) >= num_q:
+                    return mcqs
+
     # fallback
-    while len(mcqs) < n:
-        q = f"What is {topic}? (Answer with reason)"
-        mcqs.append({"question": q, "options": ["A", "B", "C", "D"], "answer": 0})
+    while len(mcqs) < num_q:
+        mcqs.append({
+            "question": f"What is {topic}?",
+            "options": ["Option A", "Option B", "Option C", "Option D"],
+            "answer": 0
+        })
     return mcqs
 
 # =========================
-# UI
+# STREAMLIT INTERFACE
 # =========================
 with st.sidebar:
-    st.header("NCERT Content")
-    if st.button("Download & Load NCERT ZIP"):
-        download_ncert_zip()
+    st.info("Load NCERT subjects (zip) to generate UPSC-style MCQs")
+    if st.button("Load NCERT Content"):
+        download_zip()
         extract_zip()
-        st.success("NCERT content extracted!")
+        st.success("NCERT content loaded!")
 
 subject = st.selectbox("Select Subject", SUBJECTS)
-topic = st.text_input("Enter Chapter / Topic (e.g., Constitution)")
-num_q = st.number_input("Number of questions", 1, 20, 5)
-q_type = st.radio("Question type", ["Subjective", "MCQ"])
+topic = st.text_input("Enter Topic/Chapter")
+num_q = st.number_input("Number of MCQs", 1, 20, 5)
 
-if st.button("Generate Questions"):
+if st.button("Generate UPSC-style MCQs"):
     if not topic.strip():
-        st.warning("Enter topic first")
+        st.warning("Please enter a topic.")
         st.stop()
 
-    all_texts = load_all_texts()
-    if not all_texts:
+    texts = []
+    for pdf_file in Path(EXTRACT_DIR).rglob("*.pdf"):
+        txt = clean_text(read_pdf(str(pdf_file)))
+        if len(txt.split()) > 50:
+            texts.append(txt)
+
+    if not texts:
         st.error("No readable NCERT text found after extraction.")
         st.stop()
 
+    # Semantic chunking
     chunks = []
-    for t in all_texts:
-        chunks.extend(chunk_text(t))
+    for text in texts:
+        chunks.extend(semantic_chunking(text))
 
-    relevant = relevant_chunks(chunks, topic, subject)
+    # Boolean filtering
+    relevant_chunks = filter_chunks(chunks, topic, subject)
+    if len(relevant_chunks) < 5:
+        relevant_chunks = chunks[:10]
 
-    if q_type == "Subjective":
-        questions = generate_subjective_questions(relevant, topic, subject, num_q)
-        st.success(f"Generated {len(questions)} subjective questions")
-        for i, q in enumerate(questions, 1):
-            st.write(f"{i}. {q}")
-    else:
-        mcqs = generate_mcqs(relevant, topic, subject, num_q)
-        st.success(f"Generated {len(mcqs)} MCQs")
-        for i, m in enumerate(mcqs, 1):
-            st.write(f"**Q{i}. {m['question']}**")
-            for idx, opt in enumerate(m["options"]):
-                st.write(f"{chr(97+idx)}) {opt}")
-            st.write(f"✅ **Answer:** {chr(97 + m['answer'])}")
-            st.write("---")
+    # Generate MCQs
+    mcqs = generate_mcqs(relevant_chunks, topic, num_q)
+    st.success(f"Generated {len(mcqs)} UPSC-style MCQs for '{topic}'")
+
+    for i, mcq in enumerate(mcqs, 1):
+        st.write(f"**Q{i}. {mcq['question']}**")
+        for idx, opt in enumerate(mcq["options"]):
+            st.write(f"{chr(97 + idx)}) {opt}")
+        st.write(f"✅ **Answer:** {chr(97 + mcq['answer'])}")
+        st.write("---")
