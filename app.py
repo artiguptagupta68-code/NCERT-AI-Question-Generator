@@ -86,38 +86,38 @@ def generate_subjective(topic, n):
 # -------------------------------
 # NCERT MCQs
 # -------------------------------
-def generate_ncert_mcqs(chunks, topic, n):
+def generate_ncert_mcqs(topic, n):
+    """
+    Generates NCERT-style MCQs for a given topic using template-based correct answers.
+    """
     mcqs = []
-    for ch in chunks:
-        sents = [s.strip() for s in re.split(r'[.;]', ch) if len(s.split())>5]
-        for s in sents:
-            kind = classify_sentence(s)
-            if kind not in ["definition", "function", "general"]:
-                continue
-            q = f"Which of the following best describes {topic}?"
-            correct = s
-            distractors = [
-                "It is a temporary political arrangement.",
-                "It deals only with economic policies.",
-                "It applies only during emergency situations."
-            ]
-            options = [correct] + distractors
-            random.shuffle(options)
-            mcqs.append({"q":q,"options":options,"answer":options.index(correct)})
-            if len(mcqs) >= n: return mcqs
-    # fallback
-    while len(mcqs) < n:
+
+    # Example template answers (expandable for each topic)
+    topic_answers = {
+        "preamble": "It reflects the ideals and philosophy of the Constitution.",
+        "fundamental rights": "They protect the liberties of citizens.",
+        "federalism": "It divides powers between central and state governments."
+    }
+
+    correct = topic_answers.get(topic.lower(), f"The {topic} is important in the Indian Constitution.")
+
+    distractors = [
+        "It is a temporary political arrangement.",
+        "It deals only with economic policies.",
+        "It applies only during emergency situations."
+    ]
+
+    for i in range(n):
+        options = [correct] + distractors
+        random.shuffle(options)
         mcqs.append({
-            "q": f"What is the significance of {topic}?",
-            "options":[
-                "It reflects the ideals and philosophy of the Constitution.",
-                "It limits the power of the judiciary.",
-                "It weakens democratic institutions.",
-                "It promotes authoritarian rule."
-            ],
-            "answer":0
+            "q": f"Which of the following best describes {topic}?",
+            "options": options,
+            "answer": options.index(correct)
         })
+
     return mcqs
+
 
 # -------------------------------
 # UPSC PYQ – STATEMENTS
