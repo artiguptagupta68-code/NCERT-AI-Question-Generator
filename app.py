@@ -101,28 +101,41 @@ def boolean_filter(chunks, topic, subject):
 # =========================
 def generate_mcqs_dynamic(topic, n, level, subject, chunks):
     mcqs = []
-
-    # Filter relevant chunks
-    relevant_chunks = boolean_filter(chunks, topic, subject)
-    if len(relevant_chunks) < n:
-        relevant_chunks = chunks[:n]
+    used = set()
+    random.shuffle(chunks)
 
     for i in range(n):
-        # pick a random chunk as the "correct answer"
-        correct_chunk = random.choice(relevant_chunks)
-        # pick 3 distractors from other chunks
-        distractors = random.sample([c for c in chunks if c != correct_chunk], k=3)
-        options = [correct_chunk] + distractors
-        random.shuffle(options)
-        answer_index = options.index(correct_chunk)
+        # Select a chunk to base the question on
+        chunk = random.choice(chunks)
+        # Ensure we don’t repeat questions
+        if chunk in used:
+            continue
+        used.add(chunk)
+
+        # Create the question
+        question_text = f"Which of the following statements best describes {topic} ?"
+
+        # Create distractors (dummy options from other chunks)
+        distractors = random.sample([c for c in chunks if c != chunk], min(3, len(chunks)-1))
+
+        # Options: correct answer first
+        options = [chunk] + distractors
+        random.shuffle(options)  # Shuffle options
+
+        # Store the index of the correct answer after shuffling
+        answer_idx = options.index(chunk)
 
         mcqs.append({
-            "question": f"Which of the following statements best describes {topic}?",
+            "question": question_text,
             "options": options,
-            "answer": answer_index
+            "answer": answer_idx
         })
 
+        if len(mcqs) >= n:
+            break
+
     return mcqs
+
 
 
 # =========================
@@ -179,11 +192,12 @@ with tab2:
         mcqs = generate_mcqs_dynamic(topic, num_q, level, subject,chunks)
 
         st.success("MCQs Generated")
-        for i, m in enumerate(mcqs, 1):
-            st.write(f"**Q{i}. {m['question']}**")
-            for j, o in enumerate(m["options"]):
-                st.write(f"{chr(97+j)}) {o}")
-                st.write(f"✅ **Answer:** {chr(97 + m['answer'])}")
+        for i, mcq in enumerate(mcqs, 1):
+            st.write(f"**Q{i}. {mcq['question']}**")
+            for idx, opt in enumerate(mcq["options"]):
+                st.write(f"{chr(97+idx)}) {opt}")
+                st.write(f"✅ **Answer:** {chr(97 + mcq['answer'])}")
                 st.write("---")
+
 
 
