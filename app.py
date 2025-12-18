@@ -94,31 +94,34 @@ def generate_subjective(topic, num_q):
 # -------------------------------
 def generate_ncert_mcqs(chunks, topic, num_q):
     mcqs = []
+    used_sentences = set()
     for ch in chunks:
-        for s in re.split(r'[.;]', ch):
+        sentences = re.split(r'[.;]', ch)
+        for s in sentences:
             s = s.strip()
-            if len(s.split()) < 8:
+            if len(s.split()) < 8 or topic.lower() not in s.lower():
                 continue
-            kind = classify_sentence(s)
-            if kind not in ["definition", "function", "general"]:
+            if s in used_sentences:
                 continue
+            used_sentences.add(s)
             question = f"Which of the following best describes {topic}?"
             correct = s
             distractors = [
-                "It is a temporary political arrangement.",
-                "It deals only with economic policies.",
-                "It applies only during emergency situations."
+                f"It is a temporary political arrangement.",
+                f"It deals only with economic policies.",
+                f"It applies only during emergency situations."
             ]
             options = [correct] + distractors
             random.shuffle(options)
             mcqs.append({"q": question, "options": options, "answer": options.index(correct)})
             if len(mcqs) >= num_q:
                 return mcqs
+    # fallback
     while len(mcqs) < num_q:
         mcqs.append({
             "q": f"What is the significance of {topic}?",
             "options": [
-                "It reflects the ideals and philosophy of the Constitution.",
+                f"It reflects the ideals and philosophy of {topic}.",
                 "It limits the power of the judiciary.",
                 "It weakens democratic institutions.",
                 "It promotes authoritarian rule."
