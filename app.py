@@ -55,6 +55,7 @@ def download_and_extract():
             z.extractall(EXTRACT_DIR)
 
 from pypdf import PdfReader
+def load_all_pdf_text():
 pdf_count = 0
 text_pages = 0
 
