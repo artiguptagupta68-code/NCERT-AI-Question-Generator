@@ -13,7 +13,7 @@ from pypdf import PdfReader
 # CONFIG
 # =========================
 FILE_ID = "1l5tGbJcvwsPiiOyi-MZYoWzoTDGjTWOz"
-ZIP_PATH = "ncert_subjects.zip"
+ZIP_PATH = "/content/drive/MyDrive/ncrt subject.z
 EXTRACT_DIR = "ncert_data"
 
 SUBJECTS = ["Polity", "Sociology", "Psychology", "Business Studies", "Economics"]
