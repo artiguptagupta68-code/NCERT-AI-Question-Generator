@@ -12,8 +12,8 @@ from pypdf import PdfReader
 # CONFIG
 # -------------------------------
 FILE_ID = "1gdiCsGOeIyaDlJ--9qon8VTya3dbjr6G"
-ZIP_PATH = "ncert_books.zip"
-EXTRACT_DIR = "ncert_data"
+ZIP_PATH = "ncert.zip"
+EXTRACT_DIR = "ncert_extraction"
 SUBJECTS = ["Polity", "Economics", "Sociology", "Psychology", "Business Studies"]
 
 # -------------------------------
