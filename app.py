@@ -53,6 +53,8 @@ def load_all_texts():
         if len(t.split()) > 50:
             texts.append(t)
     return texts
+texts = load_all_texts()
+st.write(f"Loaded {len(texts)} NCERT PDFs with meaningful text.")
 
 def semantic_chunks(text):
     sentences = re.split(r'(?<=[.])\s+', text)
