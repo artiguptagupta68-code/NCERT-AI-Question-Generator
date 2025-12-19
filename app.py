@@ -20,11 +20,8 @@ ZIP_PATH = "ncert.zip"
 EXTRACT_DIR = "ncert_extracted"
 
 SUBJECTS = [
-    "Polity",
-    "Economics",
-    "Sociology",
-    "Psychology",
-    "Business Studies",
+    "Polity", "Economics", "Sociology",
+    "Psychology", "Business Studies"
 ]
 
 # ------------------------------------------
@@ -32,10 +29,9 @@ SUBJECTS = [
 # ------------------------------------------
 st.set_page_config(
     page_title="NCERT & UPSC Generator",
-    layout="wide",
+    layout="wide"
 )
-
-st.title("📘 NCERT & UPSC Exam-Ready Question Generator")
+st.title("📘 NCERT + UPSC Exam-Ready Question Generator")
 
 # ------------------------------------------
 # UTILITIES
@@ -45,7 +41,7 @@ def download_and_extract():
         gdown.download(
             f"https://drive.google.com/uc?id={FILE_ID}",
             ZIP_PATH,
-            quiet=False,
+            quiet=False
         )
 
     if not Path(EXTRACT_DIR).exists():
@@ -53,155 +49,138 @@ def download_and_extract():
             z.extractall(EXTRACT_DIR)
 
 
-def read_pdf(path: str) -> str:
+def find_all_pdfs(base_dir):
+    return list(Path(base_dir).rglob("*.pdf"))
+
+
+def read_pdf(path):
     try:
         reader = PdfReader(path)
-        return " ".join(page.extract_text() or "" for page in reader.pages)
-    except Exception:
+        return " ".join(p.extract_text() or "" for p in reader.pages)
+    except:
         return ""
 
 
-def clean_text(text: str) -> str:
+def clean_text(text):
     text = re.sub(
-        r"(activity|exercise|project|table|figure|copyright|isbn).*",
+        r"(activity|let us|exercise|project|editor|reprint|isbn).*",
         " ",
         text,
-        flags=re.I,
+        flags=re.I
     )
     return re.sub(r"\s+", " ", text).strip()
 
 
-# ------------------------------------------
-# PDF ROOT DETECTION (CRITICAL FIX)
-# ------------------------------------------
-def find_pdf_root(base_dir: str):
-    for path in Path(base_dir).rglob("*"):
-        if path.is_dir() and list(path.glob("*.pdf")):
-            return path
-    return None
-
-
-def semantic_chunks(text: str):
-    sentences = re.split(r"(?<=[.])\s+", text)
+def semantic_chunks(text, size=3):
+    sentences = re.split(r'(?<=[.])\s+', text)
     return [
-        " ".join(sentences[i:i + 3])
-        for i in range(0, len(sentences), 3)
-        if len(" ".join(sentences[i:i + 3]).split()) >= 20
+        " ".join(sentences[i:i+size])
+        for i in range(0, len(sentences), size)
     ]
 
 
 def load_texts_and_chunks():
     texts, chunks = [], []
 
-    pdf_root = find_pdf_root(EXTRACT_DIR)
-    if pdf_root is None:
-        return texts, chunks, 0
+    pdfs = find_all_pdfs(EXTRACT_DIR)
+    st.write(f"📄 PDFs detected: {len(pdfs)}")
 
-    pdfs = list(pdf_root.rglob("*.pdf"))
+    if not pdfs:
+        return texts, chunks
 
     for pdf in pdfs:
-        raw = read_pdf(str(pdf))
-        cleaned = clean_text(raw)
+        text = clean_text(read_pdf(str(pdf)))
+        if len(text.split()) >= 100:
+            texts.append(text)
+            chunks.extend(semantic_chunks(text))
 
-        if len(cleaned.split()) >= 100:
-            texts.append(cleaned)
-            chunks.extend(semantic_chunks(cleaned))
-
-    return texts, chunks, len(pdfs)
-
+    st.write(f"🧩 Chunks created: {len(chunks)}")
+    return texts, chunks
 
 # ------------------------------------------
 # TOPIC FILTERING
 # ------------------------------------------
+def is_topic_relevant(text, topic):
+    words = topic.lower().split()
+    return any(w in text.lower() for w in words)
+
+
 def get_relevant_chunks(chunks, topic):
-    topic_words = topic.lower().split()
-    relevant = []
-
-    for ch in chunks:
-        ch_low = ch.lower()
-        if any(w in ch_low for w in topic_words):
-            if not any(x in ch_low for x in ["activity", "exercise", "table", "figure"]):
-                relevant.append(ch)
-
-    return relevant
+    return [
+        ch for ch in chunks
+        if is_topic_relevant(ch, topic)
+        and not any(x in ch.lower() for x in
+                    ["exercise", "activity", "table", "figure"])
+    ]
 
 
 def count_possible_mcqs(chunks):
     count = 0
     for ch in chunks:
-        sents = [s for s in re.split(r"[.;]", ch) if len(s.split()) >= 10]
+        sents = [s for s in re.split(r'[.;]', ch) if len(s.split()) >= 10]
         if sents:
             count += 1
     return count
 
-
 # ------------------------------------------
-# KEYWORD HIGHLIGHT
+# HIGHLIGHT KEYWORDS
 # ------------------------------------------
-def highlight_keywords(sentence):
+def highlight(sentence):
     keywords = [
-        "constitution",
-        "democracy",
-        "freedom",
-        "equality",
-        "rights",
-        "india",
+        "constitution", "democracy",
+        "freedom", "equality", "rights", "india"
     ]
     for k in keywords:
         sentence = re.sub(
             fr"\b({k})\b",
             r"**\1**",
             sentence,
-            flags=re.I,
+            flags=re.I
         )
     return sentence
 
-
 # ------------------------------------------
-# MCQ GENERATION
+# NCERT MCQs
 # ------------------------------------------
-def get_distractors(chunks, correct, topic, k=3):
-    pool = []
-    for ch in chunks:
-        for s in re.split(r"[.;]", ch):
-            s = s.strip()
-            if (
-                len(s.split()) >= 8
-                and s != correct
-                and topic.lower() in s.lower()
-            ):
-                pool.append(s)
-
-    random.shuffle(pool)
-    return pool[:k]
-
-
 def generate_ncert_mcqs(chunks, topic, n):
-    mcqs, used = [], set()
+    mcqs = []
+    used = set()
 
     for ch in chunks:
-        sents = [s.strip() for s in re.split(r"[.;]", ch) if len(s.split()) >= 10]
-        if not sents:
+        sentences = [
+            s.strip() for s in re.split(r'[.;]', ch)
+            if len(s.split()) >= 10
+        ]
+
+        if not sentences:
             continue
 
-        correct = sents[0]
+        correct = sentences[0]
         if correct in used:
             continue
 
-        distractors = get_distractors(chunks, correct, topic)
-        if len(distractors) < 2:
+        distractors = []
+        for other in chunks:
+            for s in re.split(r'[.;]', other):
+                if (
+                    len(s.split()) >= 8
+                    and s != correct
+                    and is_topic_relevant(s, topic)
+                ):
+                    distractors.append(s.strip())
+
+        if len(distractors) < 3:
             continue
 
         used.add(correct)
-        correct_h = highlight_keywords(correct)
 
-        options = [correct_h] + distractors[:3]
+        options = [highlight(correct)] + distractors[:3]
         random.shuffle(options)
 
         mcqs.append({
             "q": f"Which of the following best describes **{topic}**?",
             "options": options,
-            "answer": options.index(correct_h),
+            "answer": options.index(highlight(correct))
         })
 
         if len(mcqs) >= n:
@@ -209,20 +188,19 @@ def generate_ncert_mcqs(chunks, topic, n):
 
     return mcqs
 
-
 # ------------------------------------------
-# UPSC FORMATS
+# UPSC PATTERNS
 # ------------------------------------------
 def generate_upsc_statements(topic, n):
     qs = []
     for _ in range(n):
         qs.append({
             "statements": [
-                f"{topic} reflects constitutional values.",
-                f"{topic} influences democratic governance.",
-                f"{topic} applies only during emergencies.",
+                f"{topic} is a core value of the Indian Constitution.",
+                f"{topic} guides interpretation of fundamental rights.",
+                f"{topic} is enforceable only during emergencies."
             ],
-            "answer": "1 and 2",
+            "answer": "1 and 2"
         })
     return qs
 
@@ -231,39 +209,29 @@ def generate_assertion_reason(topic, n):
     qs = []
     for _ in range(n):
         qs.append({
-            "A": f"{topic} is a foundational principle of the Indian Constitution.",
-            "R": "It guides interpretation of rights and duties.",
-            "answer": "a",
+            "A": f"{topic} is integral to the Indian Constitution.",
+            "R": f"It reflects the philosophy and objectives of the Constitution.",
+            "answer": "a"
         })
     return qs
-
 
 # ------------------------------------------
 # SIDEBAR
 # ------------------------------------------
 with st.sidebar:
-    st.header("⚙️ Settings")
+    st.header("Settings")
 
     if st.button("📥 Load NCERT PDFs"):
         download_and_extract()
-        texts, chunks, pdf_count = load_texts_and_chunks()
-
+        texts, chunks = load_texts_and_chunks()
         st.session_state.texts = texts
         st.session_state.chunks = chunks
-        st.session_state.loaded = True
-
-        if pdf_count == 0:
-            st.error("No PDFs found after extraction.")
-        else:
-            st.success(f"Loaded {pdf_count} PDFs")
+        st.success("NCERT content loaded")
 
 subject = st.selectbox("Subject", SUBJECTS)
-topic = st.text_input("Topic (e.g. Democracy, Freedom)")
+topic = st.text_input("Topic (e.g. Democracy, Preamble)")
 num_q = st.number_input("Number of Questions", 1, 20, 5)
 
-# ------------------------------------------
-# DATA ACCESS
-# ------------------------------------------
 texts = st.session_state.get("texts", [])
 chunks = st.session_state.get("chunks", [])
 
@@ -278,20 +246,17 @@ tab1, tab2 = st.tabs(["📝 Subjective", "🧠 MCQs"])
 with tab1:
     if st.button("Generate Subjective Questions"):
         if not topic.strip():
-            st.error("Enter a topic.")
+            st.error("Enter a topic")
         else:
-            relevant = get_relevant_chunks(chunks, topic)
-            max_q = count_possible_mcqs(relevant)
+            rel = get_relevant_chunks(chunks, topic)
+            max_q = count_possible_mcqs(rel)
 
             if max_q == 0:
                 st.error("No meaningful NCERT content found.")
             else:
-                final_n = min(num_q, max_q)
-                st.info(f"{max_q} meaningful questions possible. Showing {final_n}")
-
-                for i in range(1, final_n + 1):
-                    st.write(f"{i}. Explain {topic} in the context of NCERT.")
-
+                st.info(f"{max_q} meaningful questions possible.")
+                for i in range(min(num_q, max_q)):
+                    st.write(f"{i+1}. Explain {topic} with reference to NCERT.")
 
 # ------------------------------------------
 # MCQs
@@ -299,45 +264,45 @@ with tab1:
 with tab2:
     mcq_type = st.radio(
         "MCQ Type",
-        ["NCERT MCQs", "UPSC Statements", "Assertion–Reason"],
+        ["NCERT MCQs", "UPSC Statements", "Assertion-Reason"]
     )
 
     if st.button("Generate MCQs"):
         if not topic.strip():
-            st.error("Enter a topic.")
+            st.error("Enter a topic")
         else:
-            relevant = get_relevant_chunks(chunks, topic)
-            max_q = count_possible_mcqs(relevant)
+            rel = get_relevant_chunks(chunks, topic)
+            max_q = count_possible_mcqs(rel)
 
             if max_q == 0:
-                st.error("No meaningful NCERT content found.")
+                st.error("❌ No meaningful NCERT content found.")
             else:
                 final_n = min(num_q, max_q)
-                st.info(f"{max_q} meaningful MCQs possible. Showing {final_n}")
+                st.info(f"{max_q} MCQs possible. Showing {final_n}")
 
                 if mcq_type == "NCERT MCQs":
-                    mcqs = generate_ncert_mcqs(relevant, topic, final_n)
-                    for i, m in enumerate(mcqs, 1):
-                        st.write(f"**Q{i}. {m['q']}**")
-                        for j, opt in enumerate(m["options"]):
-                            st.write(f"{chr(97 + j)}) {opt}")
-                        st.write(f"✅ Answer: {chr(97 + m['answer'])}")
+                    qs = generate_ncert_mcqs(rel, topic, final_n)
+                    for i, q in enumerate(qs, 1):
+                        st.write(f"**Q{i}. {q['q']}**")
+                        for j, opt in enumerate(q["options"]):
+                            st.write(f"{chr(97+j)}) {opt}")
+                        st.write(f"✅ Answer: {chr(97+q['answer'])}")
                         st.write("---")
 
                 elif mcq_type == "UPSC Statements":
                     qs = generate_upsc_statements(topic, final_n)
                     for i, q in enumerate(qs, 1):
                         st.write(f"**Q{i}. Consider the following statements:**")
-                        for idx, s in enumerate(q["statements"], 1):
-                            st.write(f"{idx}. {s}")
+                        for j, s in enumerate(q["statements"], 1):
+                            st.write(f"{j}. {s}")
                         st.write(f"✅ Answer: {q['answer']}")
                         st.write("---")
 
                 else:
                     qs = generate_assertion_reason(topic, final_n)
                     for i, q in enumerate(qs, 1):
-                        st.write(f"**Q{i}. Assertion (A):** {q['A']}")
-                        st.write(f"**Reason (R):** {q['R']}")
+                        st.write(f"**Assertion:** {q['A']}")
+                        st.write(f"**Reason:** {q['R']}")
                         st.write("a) Both A and R are true and R explains A")
                         st.write("b) Both true but R does not explain A")
                         st.write("c) A true, R false")
