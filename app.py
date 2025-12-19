@@ -130,10 +130,14 @@ def generate_ncert_mcqs(chunks, topic, n):
 # -------------------------------
 # LOAD & PROCESS CONTENT
 # -------------------------------
-texts = load_all_texts()
+texts = []
 chunks = []
-for t in texts:
-    chunks.extend(semantic_chunks(t))
+
+if os.path.exists(EXTRACT_DIR):
+    texts = load_all_texts()
+    for t in texts:
+        chunks.extend(semantic_chunks(t))
+
 
 relevant_chunks = get_relevant_chunks(chunks, topic)
 
