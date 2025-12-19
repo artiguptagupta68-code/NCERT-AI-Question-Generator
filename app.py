@@ -64,6 +64,8 @@ def load_all_texts():
 def semantic_chunks(text):
     sentences = re.split(r'(?<=[.])\s+', text)
     return [" ".join(sentences[i:i+3]) for i in range(0, len(sentences), 3)]
+texts = load_all_texts()
+st.write(f"Loaded {len(texts)} NCERT PDFs with meaningful text.")
 
 # -------------------------------
 # TOPIC RELEVANCE
