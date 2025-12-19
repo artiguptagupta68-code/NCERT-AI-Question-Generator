@@ -1,5 +1,5 @@
 # ===============================
-# NCERT + UPSC Exam-Ready Generator
+# NCERT + UPSC Exam-Ready Generator (Short Questions)
 # ===============================
 
 import os, zipfile, re, random
@@ -40,7 +40,8 @@ def read_pdf(path):
         return ""
 
 def clean_text(text):
-    text = re.sub(r"(activity|let us|exercise|project|editor|reprint|copyright|isbn).*", " ", text, flags=re.I)
+    text = re.sub(r"(activity|let us|exercise|project|editor|reprint|copyright|isbn).*",
+                  " ", text, flags=re.I)
     return re.sub(r"\s+", " ", text).strip()
 
 def load_all_texts():
@@ -56,26 +57,24 @@ def semantic_chunks(text):
     return [" ".join(sentences[i:i+3]) for i in range(0, len(sentences), 3)]
 
 # -------------------------------
-# KEYWORD HIGHLIGHT
-# -------------------------------
-def highlight_keywords(sentence):
-    keywords = ["constitution", "freedom", "rights", "democracy", "equality", "india", "preamble"]
-    for k in keywords:
-        sentence = re.sub(fr"\b({k})\b", r"**\1**", sentence, flags=re.I)
-    return sentence
-
-# -------------------------------
-# TOPIC FILTER & RELEVANCE
+# TOPIC RELEVANCE
 # -------------------------------
 def is_topic_relevant(sentence, topic):
-    return any(word in sentence.lower() for word in topic.lower().split())
+    topic_words = topic.lower().split()
+    return any(word in sentence.lower() for word in topic_words)
+
+def is_conceptual(sentence):
+    """Filter for meaningful, short conceptual sentences"""
+    s = sentence.lower()
+    skip_words = ["chapter", "unit", "page", "contents", "glossary", "figure", "table"]
+    return not any(word in s for word in skip_words)
 
 def get_relevant_chunks(chunks, topic):
     good = []
     for ch in chunks:
         ch_lower = ch.lower()
         if any(word in ch_lower for word in topic.lower().split()):
-            if not any(x in ch_lower for x in ["activity", "exercise", "project", "table", "figure"]):
+            if is_conceptual(ch):
                 good.append(ch)
     return good
 
@@ -85,19 +84,19 @@ def get_relevant_chunks(chunks, topic):
 def count_possible_mcqs(chunks):
     count = 0
     for ch in chunks:
-        sents = [s for s in re.split(r'[.;]', ch) if len(s.split()) >= 10]
+        sents = [s for s in re.split(r'[.;]', ch) if 8 <= len(s.split()) <= 50]
         if sents:
             count += 1
     return count
 
 # -------------------------------
-# FILTER CONCEPTUAL SENTENCES
+# KEYWORD HIGHLIGHT
 # -------------------------------
-def is_conceptual(sentence):
-    s = sentence.lower()
-    if any(x in s for x in ["ensures", "protects", "aims to", "seeks to", "embodies", "represents", "declares", "lays down", "shall", "must"]):
-        return True
-    return False
+def highlight_keywords(sentence):
+    keywords = ["constitution", "freedom", "rights", "democracy", "equality", "india", "preamble"]
+    for k in keywords:
+        sentence = re.sub(fr"\b({k})\b", r"**\1**", sentence, flags=re.I)
+    return sentence
 
 # -------------------------------
 # DYNAMIC DISTRACTORS
@@ -107,7 +106,7 @@ def get_dynamic_distractors(chunks, correct, topic, k=3):
     for ch in chunks:
         for s in re.split(r'[.;]', ch):
             s = s.strip()
-            if len(s.split()) >= 8 and s != correct and is_topic_relevant(s, topic):
+            if 8 <= len(s.split()) <= 50 and s != correct and is_topic_relevant(s, topic):
                 pool.append(s)
     random.shuffle(pool)
     return pool[:k]
@@ -126,9 +125,9 @@ def generate_subjective(topic, n):
     return templates[:n]
 
 # -------------------------------
-# NCERT MCQs
+# NCERT MCQs (Short)
 # -------------------------------
-def generate_ncert_mcqs(chunks, topic, n):
+def generate_ncert_mcqs_short(chunks, topic, n):
     mcqs = []
     used = set()
     relevant_sentences = []
@@ -136,7 +135,7 @@ def generate_ncert_mcqs(chunks, topic, n):
     for ch in chunks:
         for s in re.split(r'[.;]', ch):
             s = s.strip()
-            if len(s.split()) >= 8 and is_conceptual(s) and is_topic_relevant(s, topic):
+            if 8 <= len(s.split()) <= 50 and is_conceptual(s) and is_topic_relevant(s, topic):
                 relevant_sentences.append(s)
 
     random.shuffle(relevant_sentences)
@@ -165,9 +164,9 @@ def generate_ncert_mcqs(chunks, topic, n):
     return mcqs
 
 # -------------------------------
-# UPSC Assertion-Reason
+# ASSERTION-REASON (Short)
 # -------------------------------
-def generate_assertion_reason(chunks, topic, n):
+def generate_assertion_reason_short(chunks, topic, n):
     arqs = []
     used = set()
     relevant_sentences = []
@@ -175,7 +174,7 @@ def generate_assertion_reason(chunks, topic, n):
     for ch in chunks:
         for s in re.split(r'[.;]', ch):
             s = s.strip()
-            if len(s.split()) >= 8 and is_conceptual(s) and is_topic_relevant(s, topic):
+            if 8 <= len(s.split()) <= 50 and is_topic_relevant(s, topic) and is_conceptual(s):
                 relevant_sentences.append(s)
 
     random.shuffle(relevant_sentences)
@@ -184,8 +183,10 @@ def generate_assertion_reason(chunks, topic, n):
         if s in used:
             continue
         used.add(s)
+
         reason_candidates = [r for r in relevant_sentences if r != s]
         reason = reason_candidates[0] if reason_candidates else s
+
         arqs.append({
             "A": highlight_keywords(s),
             "R": highlight_keywords(reason),
@@ -197,7 +198,7 @@ def generate_assertion_reason(chunks, topic, n):
     return arqs
 
 # -------------------------------
-# UPSC Statement-based MCQs
+# UPSC Statements (Short)
 # -------------------------------
 def generate_upsc_statements(topic, n):
     qs = []
@@ -236,10 +237,12 @@ if os.path.exists(EXTRACT_DIR):
     for t in texts:
         chunks.extend(semantic_chunks(t))
 
-st.info(f"📄 PDFs detected: {len(texts)} | 🧩 Total chunks extracted: {len(chunks)}")
-
 relevant_chunks = get_relevant_chunks(chunks, topic)
-st.info(f"🔍 Relevant chunks found: {len(relevant_chunks)}")
+max_possible = count_possible_mcqs(relevant_chunks)
+
+st.write(f"📄 PDFs detected: {len(texts)}")
+st.write(f"🧩 Total chunks extracted: {len(chunks)}")
+st.write(f"🔍 Relevant chunks found: {len(relevant_chunks)}")
 
 # -------------------------------
 # TABS
@@ -259,7 +262,7 @@ with tab1:
             final_n = min(num_q, max_possible)
 
             if max_possible == 0:
-                st.error("❌ No meaningful NCERT content found for this topic.")
+                st.error("No meaningful content found for this topic in NCERT.")
             else:
                 st.info(f"📊 {max_possible} meaningful questions possible. Showing {final_n}.")
                 qs = generate_subjective(topic, final_n)
@@ -270,7 +273,10 @@ with tab1:
 # MCQs TAB
 # -------------------------------
 with tab2:
-    mcq_type = st.radio("MCQ Type", ["NCERT MCQs", "UPSC PYQ – Statements", "UPSC PYQ – Assertion Reason"])
+    mcq_type = st.radio(
+        "MCQ Type",
+        ["NCERT MCQs", "UPSC PYQ – Statements", "UPSC PYQ – Assertion Reason"]
+    )
 
     if st.button("Generate MCQs"):
         if not topic.strip():
@@ -286,7 +292,7 @@ with tab2:
                 st.info(f"📊 {max_possible} meaningful MCQs possible. Showing {final_n}.")
 
                 if mcq_type == "NCERT MCQs":
-                    mcqs = generate_ncert_mcqs(relevant_chunks, topic, final_n)
+                    mcqs = generate_ncert_mcqs_short(relevant_chunks, topic, final_n)
                     for i, m in enumerate(mcqs, 1):
                         st.write(f"**Q{i}. {m['q']}**")
                         for j, opt in enumerate(m["options"]):
@@ -305,8 +311,8 @@ with tab2:
                         st.write("---")
 
                 else:
-                    arqs = generate_assertion_reason(relevant_chunks, topic, final_n)
-                    for i, q in enumerate(arqs, 1):
+                    qs = generate_assertion_reason_short(relevant_chunks, topic, final_n)
+                    for i, q in enumerate(qs, 1):
                         st.write(f"**Q{i}. Assertion (A):** {q['A']}")
                         st.write(f"**Reason (R):** {q['R']}")
                         st.write("a) Both A and R are true and R is the correct explanation of A")
