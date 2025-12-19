@@ -111,18 +111,29 @@ def get_dynamic_distractors(chunks, correct, topic, k=3):
     random.shuffle(pool)
     return pool[:k]
 
+
 # -------------------------------
-# SUBJECTIVE QUESTIONS
+# SUBJECTIVE QUESTIONS (Two types)
 # -------------------------------
-def generate_subjective(topic, n):
-    templates = [
-        f"Explain the concept of {topic}.",
-        f"Discuss the significance of {topic}.",
-        f"Describe the main features of {topic}.",
-        f"Why is {topic} important in a democracy?",
-        f"Examine the role of {topic} in the Indian Constitution.",
-    ]
+def generate_subjective(topic, n, standard="NCERT"):
+    if standard == "NCERT":
+        templates = [
+            f"Explain the concept of {topic}.",
+            f"Describe the main features of {topic}.",
+            f"What is the importance of {topic} in everyday life?",
+            f"Discuss the key points of {topic}.",
+            f"Give examples related to {topic}."
+        ]
+    else:  # UPSC standard
+        templates = [
+            f"Analyse the role of {topic} in shaping India's constitutional framework.",
+            f"Examine the significance of {topic} in promoting democracy and equality.",
+            f"Discuss the challenges in implementing {topic} effectively in India.",
+            f"Evaluate how {topic} influences socio-economic policies in India.",
+            f"Critically assess the impact of {topic} on governance and society."
+        ]
     return templates[:n]
+
 
 # -------------------------------
 # NCERT MCQs (Short)
@@ -253,6 +264,8 @@ tab1, tab2 = st.tabs(["📝 Subjective (NCERT)", "🧠 MCQs (NCERT + UPSC)"])
 # SUBJECTIVE TAB
 # -------------------------------
 with tab1:
+    standard = st.radio("Select Question Standard", ["NCERT", "UPSC"])
+    
     if st.button("Generate Subjective Questions"):
         if not topic.strip():
             st.error("Please enter a topic first.")
@@ -265,7 +278,7 @@ with tab1:
                 st.error("No meaningful content found for this topic in NCERT.")
             else:
                 st.info(f"📊 {max_possible} meaningful questions possible. Showing {final_n}.")
-                qs = generate_subjective(topic, final_n)
+                qs = generate_subjective(topic, final_n, standard=standard)
                 for i, q in enumerate(qs, 1):
                     st.write(f"{i}. {q}")
 
