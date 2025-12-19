@@ -10,3 +10,4 @@ PyMuPDF
 pypdf
 gdown
 PdfReader
+pdf2image
