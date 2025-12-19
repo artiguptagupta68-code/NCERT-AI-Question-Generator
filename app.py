@@ -1,3 +1,57 @@
+# ===============================
+# NCERT + UPSC Exam-Ready Generator
+# ===============================
+
+import os
+import zipfile
+import re
+import random
+from pathlib import Path
+
+import streamlit as st
+import gdown
+from pypdf import PdfReader
+
+# -------------------------------
+# CONFIG
+# -------------------------------
+FILE_ID = "1gdiCsGOeIyaDlJ--9qon8VTya3dbjr6G"
+ZIP_PATH = "ncert_books.zip"
+EXTRACT_DIR = "ncert_data"
+
+SUBJECTS = ["Polity", "Economics", "Sociology", "Psychology", "Business Studies"]
+
+# -------------------------------
+# STREAMLIT SETUP
+# -------------------------------
+st.set_page_config(page_title="NCERT & UPSC Generator", layout="wide")
+st.title("📘 NCERT & UPSC Exam-Ready Question Generator")
+
+# -------------------------------
+# UTILITIES
+# -------------------------------
+def download_and_extract():
+    if not os.path.exists(ZIP_PATH):
+        gdown.download(f"https://drive.google.com/uc?id={FILE_ID}", ZIP_PATH, quiet=False)
+    if not os.path.exists(EXTRACT_DIR):
+        with zipfile.ZipFile(ZIP_PATH, "r") as z:
+            z.extractall(EXTRACT_DIR)
+
+def read_pdf(path):
+    try:
+        reader = PdfReader(path)
+        return " ".join(page.extract_text() or "" for page in reader.pages)
+    except Exception:
+        return ""
+
+def clean_text(text):
+    text = re.sub(
+        r"(activity|let us|exercise|project|editor|reprint|copyright|isbn).*",
+        " ",
+        text,
+        flags=re.I,
+    )
+    return re.sub(r"\s+", " ", text).strip()
 # -------------------------------
 # CONTEXTUAL CHUNK FILTER
 # -------------------------------
