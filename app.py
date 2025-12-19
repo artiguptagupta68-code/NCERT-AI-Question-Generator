@@ -2,12 +2,8 @@
 # NCERT + UPSC Exam-Ready Generator
 # ===============================
 
-import os
-import zipfile
-import re
-import random
+import os, zipfile, re, random
 from pathlib import Path
-
 import streamlit as st
 import gdown
 from pypdf import PdfReader
@@ -18,7 +14,6 @@ from pypdf import PdfReader
 FILE_ID = "1gdiCsGOeIyaDlJ--9qon8VTya3dbjr6G"
 ZIP_PATH = "ncert_books.zip"
 EXTRACT_DIR = "ncert_data"
-
 SUBJECTS = ["Polity", "Economics", "Sociology", "Psychology", "Business Studies"]
 
 # -------------------------------
@@ -40,16 +35,14 @@ def download_and_extract():
 def read_pdf(path):
     try:
         reader = PdfReader(path)
-        return " ".join(page.extract_text() or "" for page in reader.pages)
+        return " ".join(p.extract_text() or "" for p in reader.pages)
     except:
         return ""
 
 def clean_text(text):
     text = re.sub(
         r"(activity|let us|exercise|project|editor|reprint|copyright|isbn).*",
-        " ",
-        text,
-        flags=re.I
+        " ", text, flags=re.I
     )
     return re.sub(r"\s+", " ", text).strip()
 
@@ -57,16 +50,25 @@ def load_all_texts():
     texts = []
     for pdf in Path(EXTRACT_DIR).rglob("*.pdf"):
         t = clean_text(read_pdf(str(pdf)))
-        if len(t.split()) > 200:
+        if len(t.split()) > 50:
             texts.append(t)
     return texts
 
 def semantic_chunks(text):
     sentences = re.split(r'(?<=[.])\s+', text)
     return [" ".join(sentences[i:i+3]) for i in range(0, len(sentences), 3)]
-texts = load_all_texts()
-st.write(f"Loaded {len(texts)} NCERT PDFs with meaningful text.")
 
+def classify_sentence(sentence):
+    s = sentence.lower()
+    if any(x in s for x in ["means", "refers to", "defined as", "can be understood as"]):
+        return "definition"
+    if any(x in s for x in ["ensures", "protects", "aims to", "seeks to","embodies","represents","declares","lays down"]):
+        return "function"
+    if any(x in s for x in ["therefore", "thus", "hence", "as a result"]):
+        return "implication"
+    if any(x in s for x in ["article", "amendment", "schedule"]):
+        return "constitutional_fact"
+    return "general"
 # -------------------------------
 # TOPIC RELEVANCE
 # -------------------------------
