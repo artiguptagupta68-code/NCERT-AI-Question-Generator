@@ -73,12 +73,22 @@ def is_topic_relevant(sentence, topic):
     return any(word in sentence.lower() for word in topic_words)
 
 def get_relevant_chunks(chunks, topic):
+    topic_words = topic.lower().split()
     good = []
+
     for ch in chunks:
-        if is_topic_relevant(ch, topic) and 30 <= len(ch.split()) <= 140:
-            if not any(x in ch.lower() for x in ["activity", "exercise", "project", "table", "figure"]):
+        ch_lower = ch.lower()
+        # Count how many topic words appear in the chunk
+        matches = sum(1 for w in topic_words if w in ch_lower)
+
+        # Keep chunks with at least one match
+        if matches >= 1:
+            # Filter out tables/figures/exercises etc
+            if not any(x in ch_lower for x in ["activity", "exercise", "project", "table", "figure"]):
                 good.append(ch)
+
     return good
+
 
 # -------------------------------
 # COUNT POSSIBLE MCQs
