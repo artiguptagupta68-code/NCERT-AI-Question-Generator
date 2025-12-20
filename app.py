@@ -27,10 +27,28 @@ st.title("📘 NCERT & UPSC Exam-Ready Question Generator")
 # -------------------------------
 def download_and_extract():
     if not os.path.exists(ZIP_PATH):
-        gdown.download(f"https://drive.google.com/uc?id={FILE_ID}", ZIP_PATH, quiet=False)
-    if not os.path.exists(EXTRACT_DIR):
-        with zipfile.ZipFile(ZIP_PATH, "r") as z:
-            z.extractall(EXTRACT_DIR)
+        gdown.download(
+            f"https://drive.google.com/uc?id={FILE_ID}",
+            ZIP_PATH,
+            quiet=False
+        )
+
+    os.makedirs(EXTRACT_DIR, exist_ok=True)
+
+    # Step 1: extract main zip
+    with zipfile.ZipFile(ZIP_PATH, "r") as z:
+        z.extractall(EXTRACT_DIR)
+
+    # Step 2: extract nested zips
+    for zfile in Path(EXTRACT_DIR).rglob("*.zip"):
+        try:
+            extract_to = zfile.parent / zfile.stem
+            extract_to.mkdir(exist_ok=True)
+            with zipfile.ZipFile(zfile, "r") as inner:
+                inner.extractall(extract_to)
+        except:
+            pass
+
 
 def read_pdf(path):
     try:
@@ -51,6 +69,7 @@ def load_all_texts():
         if len(t.split()) > 50:
             texts.append(t)
     return texts
+st.write("📂 PDF files found:", list(Path(EXTRACT_DIR).rglob("*.pdf"))[:5])
 
 def semantic_chunks(text):
     sentences = re.split(r'(?<=[.])\s+', text)
