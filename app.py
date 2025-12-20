@@ -1,46 +1,54 @@
-# ============================================
-# NCERT + UPSC Exam-Ready Generator (RAG Based)
-# ============================================
+# ===============================
+# NCERT RAG System (UPSC Grade)
+# ===============================
 
-import os, zipfile, re, random
+import os, zipfile, re, pickle
 from pathlib import Path
+
 import streamlit as st
 import gdown
-from pypdf import PdfReader
-
 import faiss
-import numpy as np
+from pypdf import PdfReader
 from sentence_transformers import SentenceTransformer
 
-# --------------------------------------------
+# -------------------------------
 # CONFIG
-# --------------------------------------------
+# -------------------------------
 FILE_ID = "1gdiCsGOeIyaDlJ--9qon8VTya3dbjr6G"
 ZIP_PATH = "ncert.zip"
 EXTRACT_DIR = "ncert_extracted"
 
-SUBJECTS = {
-    "Polity": ["constitution", "preamble", "parliament", "president", "governor", "judiciary"],
-    "Economics": ["economy", "growth", "inflation", "poverty"],
-    "Sociology": ["society", "culture", "social"],
-    "Psychology": ["behaviour", "learning", "cognition"],
-    "Business Studies": ["management", "planning", "organisation"]
-}
+VECTOR_DIR = "vectorstore"
+FAISS_PATH = f"{VECTOR_DIR}/ncert.index"
+META_PATH = f"{VECTOR_DIR}/ncert_meta.pkl"
 
-EMBED_MODEL = SentenceTransformer("all-MiniLM-L6-v2")
+os.makedirs(VECTOR_DIR, exist_ok=True)
 
-# --------------------------------------------
-# STREAMLIT SETUP
-# --------------------------------------------
-st.set_page_config(page_title="NCERT & UPSC Generator", layout="wide")
-st.title("📘 NCERT & UPSC Exam-Ready Question Generator")
+# -------------------------------
+# STREAMLIT
+# -------------------------------
+st.set_page_config("Ask NCERT", layout="wide")
+st.title("📘 Ask Anything from NCERT (UPSC-Safe)")
 
-# --------------------------------------------
-# DATA LOADING
-# --------------------------------------------
+# -------------------------------
+# MODEL
+# -------------------------------
+@st.cache_resource
+def load_model():
+    return SentenceTransformer("all-MiniLM-L6-v2")
+
+embedder = load_model()
+
+# -------------------------------
+# PDF UTILITIES
+# -------------------------------
 def download_and_extract():
     if not os.path.exists(ZIP_PATH):
-        gdown.download(f"https://drive.google.com/uc?id={FILE_ID}", ZIP_PATH, quiet=False)
+        gdown.download(
+            f"https://drive.google.com/uc?id={FILE_ID}",
+            ZIP_PATH,
+            quiet=False
+        )
 
     os.makedirs(EXTRACT_DIR, exist_ok=True)
 
@@ -56,7 +64,6 @@ def download_and_extract():
         except:
             pass
 
-
 def read_pdf(path):
     try:
         reader = PdfReader(path)
@@ -64,143 +71,123 @@ def read_pdf(path):
     except:
         return ""
 
-
 def clean_text(text):
-    text = re.sub(r"(reprint|isbn|contents|page\s+\d+).*", " ", text, flags=re.I)
-    return re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"(reprint|isbn|copyright).*", "", text, flags=re.I)
+    return text.strip()
 
-
-def chunk_text(text, size=3):
+# -------------------------------
+# CHUNKING
+# -------------------------------
+def semantic_chunks(text, size=3):
     sentences = re.split(r'(?<=[.])\s+', text)
     return [" ".join(sentences[i:i+size]) for i in range(0, len(sentences), size)]
 
+# -------------------------------
+# BUILD / LOAD VECTORSTORE
+# -------------------------------
+def load_or_build_index():
+    if os.path.exists(FAISS_PATH) and os.path.exists(META_PATH):
+        index = faiss.read_index(FAISS_PATH)
+        with open(META_PATH, "rb") as f:
+            chunks = pickle.load(f)
+        return index, chunks
 
-# --------------------------------------------
-# LOAD + EMBEDDINGS
-# --------------------------------------------
-@st.cache_resource
-def load_embeddings():
-    chunks, subjects = [], []
-
+    texts = []
     for pdf in Path(EXTRACT_DIR).rglob("*.pdf"):
-        text = clean_text(read_pdf(str(pdf)))
-        if len(text.split()) < 100:
-            continue
+        t = clean_text(read_pdf(pdf))
+        if len(t.split()) > 100:
+            texts.append(t)
 
-        for ch in chunk_text(text):
-            if 20 <= len(ch.split()) <= 120:
-                chunks.append(ch)
-                subjects.append(pdf.name.lower())
+    chunks = []
+    for t in texts:
+        chunks.extend(semantic_chunks(t))
 
-    embeddings = EMBED_MODEL.encode(chunks, convert_to_numpy=True)
+    embeddings = embedder.encode(chunks, show_progress_bar=True)
+
     index = faiss.IndexFlatL2(embeddings.shape[1])
     index.add(embeddings)
 
-    return chunks, subjects, embeddings, index
+    faiss.write_index(index, FAISS_PATH)
+    with open(META_PATH, "wb") as f:
+        pickle.dump(chunks, f)
 
+    return index, chunks
 
-# --------------------------------------------
+# -------------------------------
 # RETRIEVAL
-# --------------------------------------------
-def retrieve_chunks(query, subject, top_k=5):
-    q_emb = EMBED_MODEL.encode([query])
-    D, I = index.search(q_emb, top_k * 3)
+# -------------------------------
+def retrieve(query, k=6):
+    q_emb = embedder.encode([query])
+    _, idx = st.session_state.index.search(q_emb, k)
+    return [st.session_state.chunks[i] for i in idx[0]]
 
-    results = []
-    for idx in I[0]:
-        if subject.lower() in subjects[idx]:
-            results.append(chunks[idx])
-        if len(results) >= top_k:
-            break
+# -------------------------------
+# SESSION STATE
+# -------------------------------
+if "index" not in st.session_state:
+    st.session_state.index = None
+    st.session_state.chunks = []
 
-    return results
-
-
-# --------------------------------------------
-# GENERATORS
-# --------------------------------------------
-def ncert_subjective(topic, level="NCERT"):
-    if level == "NCERT":
-        return [
-            f"Explain the term {topic}.",
-            f"Describe the main features of {topic}.",
-            f"Why is {topic} important?"
-        ]
-    else:
-        return [
-            f"Analyse the significance of {topic} in the Indian constitutional framework.",
-            f"Discuss {topic} in the context of Indian democracy."
-        ]
-
-
-def chatbot_answer(query, subject):
-    retrieved = retrieve_chunks(query, subject)
-
-    if not retrieved:
-        return "❌ No relevant NCERT content found for this topic."
-
-    answer = " ".join(retrieved)
-    return answer
-
-
-# --------------------------------------------
+# -------------------------------
 # SIDEBAR
-# --------------------------------------------
+# -------------------------------
 with st.sidebar:
-    if st.button("📥 Load NCERT PDFs"):
-        download_and_extract()
-        st.success("NCERT PDFs loaded")
+    if st.button("📥 Load & Index NCERT"):
+        with st.spinner("Indexing NCERT (one-time)..."):
+            download_and_extract()
+            idx, ch = load_or_build_index()
+            st.session_state.index = idx
+            st.session_state.chunks = ch
+        st.success("✅ NCERT Ready")
 
-subject = st.selectbox("Subject", list(SUBJECTS.keys()))
-topic = st.text_input("Topic / Question")
-num_q = st.number_input("Number of Questions", 1, 10, 5)
-
-# --------------------------------------------
-# LOAD DATA
-# --------------------------------------------
-if os.path.exists(EXTRACT_DIR):
-    chunks, subjects, embeddings, index = load_embeddings()
-    st.info(f"📄 Chunks indexed: {len(chunks)}")
-
-# --------------------------------------------
+# -------------------------------
 # TABS
-# --------------------------------------------
+# -------------------------------
 tab1, tab2, tab3 = st.tabs(["📝 Subjective", "🧠 MCQs / AR", "💬 Ask NCERT"])
 
-# --------------------------------------------
+# -------------------------------
 # SUBJECTIVE
-# --------------------------------------------
+# -------------------------------
 with tab1:
-    level = st.radio("Question Standard", ["NCERT", "UPSC"])
+    topic = st.text_input("Topic (NCERT only)")
     if st.button("Generate Subjective"):
-        qs = ncert_subjective(topic, level)
-        for i, q in enumerate(qs[:num_q], 1):
-            st.write(f"{i}. {q}")
+        ctx = retrieve(topic)
+        st.write("### NCERT-Based Question")
+        st.write(f"Explain **{topic}** with reference to NCERT.")
+        st.write("#### Key Points (from NCERT):")
+        for c in ctx:
+            st.write("- ", c)
 
-# --------------------------------------------
-# MCQs / AR (Concept-based)
-# --------------------------------------------
+# -------------------------------
+# MCQs / ASSERTION
+# -------------------------------
 with tab2:
-    if st.button("Generate MCQs / AR"):
-        retrieved = retrieve_chunks(topic, subject)
-
-        if not retrieved:
+    topic = st.text_input("Topic for MCQs")
+    if st.button("Generate MCQ"):
+        ctx = retrieve(topic)
+        if not ctx:
             st.error("No NCERT content found.")
         else:
-            fact = retrieved[0]
-            st.write(f"**Assertion (A):** {fact}")
-            st.write(f"**Reason (R):** {retrieved[1] if len(retrieved) > 1 else fact}")
-            st.write("a) Both A and R are true and R is the correct explanation of A")
-            st.write("b) Both A and R are true but R is not the correct explanation of A")
-            st.write("c) A is true but R is false")
-            st.write("d) A is false but R is true")
+            st.write("**Assertion (A):**", ctx[0])
+            st.write("**Reason (R):**", ctx[1] if len(ctx) > 1 else ctx[0])
+            st.write("""
+a) Both A and R are true and R explains A  
+b) Both true but R not explanation  
+c) A true, R false  
+d) A false, R true
+""")
 
-# --------------------------------------------
+# -------------------------------
 # CHATBOT (STRICT NCERT)
-# --------------------------------------------
+# -------------------------------
 with tab3:
-    q = st.text_input("Ask anything strictly from NCERT:")
+    q = st.text_input("Ask anything strictly from NCERT")
     if st.button("Ask"):
-        ans = chatbot_answer(q, subject)
-        st.markdown("### 📘 NCERT-based answer:")
-        st.write(ans)
+        ctx = retrieve(q)
+        if not ctx:
+            st.error("Answer not found in NCERT.")
+        else:
+            st.write("📘 **NCERT-based answer:**")
+            for c in ctx:
+                st.write(c)
