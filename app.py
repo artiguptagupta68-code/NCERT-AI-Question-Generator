@@ -69,7 +69,7 @@ def load_all_texts():
         if len(t.split()) > 50:
             texts.append(t)
     return texts
-st.write("📂 PDF files found:", list(Path(EXTRACT_DIR).rglob("*.pdf"))[:5])
+
 
 def semantic_chunks(text):
     sentences = re.split(r'(?<=[.])\s+', text)
