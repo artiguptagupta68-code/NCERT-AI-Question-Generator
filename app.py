@@ -1,11 +1,10 @@
 # ============================================
 # NCERT + UPSC Exam-Ready Generator (RAG-based)
-# (Original logic preserved + subject filtering + fixed flashcards)
+# Streamlit-safe | Original logic preserved
 # ============================================
 
 import os, zipfile, re, random
 from pathlib import Path
-
 import streamlit as st
 import gdown
 import numpy as np
@@ -50,15 +49,11 @@ def load_embedder():
 embedder = load_embedder()
 
 # --------------------------------------------
-# UTILITIES (UNCHANGED)
+# UTILITIES
 # --------------------------------------------
 def download_and_extract():
     if not os.path.exists(ZIP_PATH):
-        gdown.download(
-            f"https://drive.google.com/uc?id={FILE_ID}",
-            ZIP_PATH,
-            quiet=False
-        )
+        gdown.download(f"https://drive.google.com/uc?id={FILE_ID}", ZIP_PATH)
 
     os.makedirs(EXTRACT_DIR, exist_ok=True)
 
@@ -67,10 +62,10 @@ def download_and_extract():
 
     for zfile in Path(EXTRACT_DIR).rglob("*.zip"):
         try:
-            target = zfile.parent / zfile.stem
-            target.mkdir(exist_ok=True)
+            out = zfile.parent / zfile.stem
+            out.mkdir(exist_ok=True)
             with zipfile.ZipFile(zfile, "r") as inner:
-                inner.extractall(target)
+                inner.extractall(out)
         except:
             pass
 
@@ -84,18 +79,12 @@ def read_pdf(path):
 
 
 def clean_text(text):
-    text = re.sub(
-        r"(activity|exercise|project|editor|reprint|copyright|isbn).*",
-        " ",
-        text,
-        flags=re.I,
-    )
+    text = re.sub(r"(activity|exercise|project|editor|isbn|copyright).*", " ", text, flags=re.I)
     return re.sub(r"\s+", " ", text).strip()
 
 
-def pdf_matches_subject(pdf_path, subject):
-    p = pdf_path.lower()
-    return any(k in p for k in SUBJECT_KEYWORDS.get(subject, []))
+def pdf_matches_subject(path, subject):
+    return any(k in path.lower() for k in SUBJECT_KEYWORDS[subject])
 
 
 def load_all_texts(subject):
@@ -109,18 +98,13 @@ def load_all_texts(subject):
 
 
 def semantic_chunks(text):
-    sentences = re.split(r"(?<=[.])\s+", text)
-    return [
-        " ".join(sentences[i:i+3])
-        for i in range(0, len(sentences), 3)
-        if len(sentences[i:i+3]) > 0
-    ]
+    sents = re.split(r"(?<=[.])\s+", text)
+    return [" ".join(sents[i:i+3]) for i in range(0, len(sents), 3)]
 
 
-def is_conceptual(sentence):
-    s = sentence.lower()
+def is_conceptual(s):
     skip = ["chapter", "unit", "page", "contents", "figure", "table"]
-    return not any(k in s for k in skip) and 8 <= len(s.split()) <= 60
+    return 8 <= len(s.split()) <= 60 and not any(k in s.lower() for k in skip)
 
 
 @st.cache_data(show_spinner=False)
@@ -136,77 +120,56 @@ def retrieve_relevant_chunks(chunks, embeddings, query, standard="NCERT", top_k=
 
     ranked = sorted(zip(chunks, sims), key=lambda x: x[1], reverse=True)
 
-    results = []
-    for ch, score in ranked:
-        if score >= threshold and is_conceptual(ch):
-            results.append(ch)
-        if len(results) >= top_k:
-            break
-
-    return results
-
+    return [
+        ch for ch, sc in ranked
+        if sc >= threshold and is_conceptual(ch)
+    ][:top_k]
 
 # --------------------------------------------
-# ORIGINAL QUESTION GENERATORS (UNCHANGED)
+# QUESTION GENERATORS (UNCHANGED LOGIC)
 # --------------------------------------------
 def generate_subjective(topic, n, standard):
     if standard == "NCERT":
-        templates = [
+        qs = [
             f"Explain the concept of {topic}.",
             f"Describe the main features of {topic}.",
             f"Write a short note on {topic}.",
-            f"Explain {topic} with suitable examples.",
+            f"Explain {topic} with examples."
         ]
     else:
-        templates = [
-            f"Analyse the significance of {topic} in the Indian context.",
+        qs = [
+            f"Analyse the significance of {topic}.",
             f"Critically examine {topic}.",
-            f"Discuss the relevance of {topic} in contemporary India.",
+            f"Discuss the relevance of {topic} in contemporary India."
         ]
-    return templates[:n]
+    return qs[:n]
 
 
 def generate_ncert_mcqs(chunks, topic, n):
-    sentences = [
-        s for ch in chunks
-        for s in re.split(r"[.;]", ch)
-        if is_conceptual(s)
-    ]
-    random.shuffle(sentences)
+    sents = [s for ch in chunks for s in re.split(r"[.;]", ch) if is_conceptual(s)]
+    random.shuffle(sents)
 
     mcqs = []
-    for s in sentences:
-        distractors = random.sample(sentences, min(3, len(sentences)))
-        options = [s] + distractors
-        random.shuffle(options)
+    for s in sents[:n]:
+        opts = random.sample(sents, min(4, len(sents)))
+        if s not in opts:
+            opts[0] = s
+        random.shuffle(opts)
 
         mcqs.append({
             "q": f"Which statement best explains {topic}?",
-            "options": options,
-            "answer": options.index(s)
+            "options": opts,
+            "answer": opts.index(s)
         })
-
-        if len(mcqs) >= n:
-            break
-
     return mcqs
 
 
-# --------------------------------------------
-# FLASHCARDS (FIXED – BULLET BASED)
-# --------------------------------------------
-def generate_flashcards(chunks, topic, n):
+def generate_flashcards(chunks, n):
     cards = []
     for ch in chunks[:n]:
-        bullets = re.split(r"[.;]", ch)
-        bullets = [b.strip() for b in bullets if is_conceptual(b)]
-
-        cards.append({
-            "title": topic,
-            "points": bullets[:5]
-        })
+        bullets = [b.strip() for b in re.split(r"[.;]", ch) if is_conceptual(b)]
+        cards.append(bullets[:5])
     return cards
-
 
 # --------------------------------------------
 # SIDEBAR
@@ -221,16 +184,15 @@ topic = st.text_input("Topic")
 num_q = st.number_input("Number of Questions", 1, 10, 5)
 
 # --------------------------------------------
-# LOAD DATA (SUBJECT FILTER ONLY)
+# LOAD DATA
 # --------------------------------------------
 texts, chunks = [], []
-
 if os.path.exists(EXTRACT_DIR):
     texts = load_all_texts(subject)
     for t in texts:
         chunks.extend(semantic_chunks(t))
 
-embeddings = embed_chunks(chunks) if chunks else []
+embeddings = embed_chunks(chunks) if chunks else np.array([])
 
 st.write(f"📄 PDFs used: {len(texts)}")
 st.write(f"🧩 Chunks created: {len(chunks)}")
@@ -245,39 +207,24 @@ tab1, tab2, tab3, tab4 = st.tabs(
 # --------------------------------------------
 # SUBJECTIVE
 # --------------------------------------------
-
-
 with tab1:
-    standard = st.radio(
-    "Standard",
-    ["NCERT", "UPSC"],
-    horizontal=True,
-    key="subjective_standard"
-)
-    if st.button("Generate Subjective Questions"):
-        rel = retrieve_relevant_chunks(chunks, embeddings, topic, standard)
-        qs = generate_subjective(topic, min(num_q, len(rel)), standard)
-        for i, q in enumerate(qs, 1):
+    std1 = st.radio("Standard", ["NCERT", "UPSC"], key="sub_std", horizontal=True)
+    if st.button("Generate Subjective"):
+        rel = retrieve_relevant_chunks(chunks, embeddings, topic, std1)
+        for i, q in enumerate(generate_subjective(topic, min(num_q, len(rel)), std1), 1):
             st.write(f"{i}. {q}")
 
 # --------------------------------------------
 # MCQs
 # --------------------------------------------
 with tab2:
-    standard = st.radio(
-    "Standard",
-    ["NCERT", "UPSC"],
-    horizontal=True,
-    key="mcq_standard"
-)
-
+    std2 = st.radio("Standard", ["NCERT", "UPSC"], key="mcq_std", horizontal=True)
     if st.button("Generate MCQs"):
-        rel = retrieve_relevant_chunks(chunks, embeddings, topic, standard)
-        mcqs = generate_ncert_mcqs(rel, topic, num_q)
-        for i, m in enumerate(mcqs, 1):
+        rel = retrieve_relevant_chunks(chunks, embeddings, topic, std2)
+        for i, m in enumerate(generate_ncert_mcqs(rel, topic, num_q), 1):
             st.write(f"**Q{i}. {m['q']}**")
-            for j, opt in enumerate(m["options"]):
-                st.write(f"{chr(97+j)}) {opt}")
+            for j, o in enumerate(m["options"]):
+                st.write(f"{chr(97+j)}) {o}")
             st.write(f"✅ Answer: {chr(97+m['answer'])}")
             st.write("---")
 
@@ -285,55 +232,25 @@ with tab2:
 # CHATBOT
 # --------------------------------------------
 with tab3:
-    standard = st.radio(
-    "Answer Style",
-    ["NCERT", "UPSC"],
-    horizontal=True,
-    key="chatbot_standard"
-)
-
+    std3 = st.radio("Answer Style", ["NCERT", "UPSC"], key="chat_std", horizontal=True)
     q = st.text_input("Ask strictly from NCERT")
     if st.button("Ask"):
-        rel = retrieve_relevant_chunks(chunks, embeddings, q, standard, top_k=6)
+        rel = retrieve_relevant_chunks(chunks, embeddings, q, std3, 6)
         if not rel:
-            st.error("❌ Not found in NCERT textbooks")
+            st.error("❌ Not found in NCERT")
         else:
-            st.markdown("### 📘 NCERT-based answer:")
+            st.markdown("### 📘 NCERT-based answer")
             for r in rel:
                 st.write(r)
 
+# --------------------------------------------
+# FLASHCARDS (NO BUTTON)
+# --------------------------------------------
 with tab4:
-    st.subheader("📚 NCERT Flashcards (Concept Revision)")
-
-    flashcard_mode = st.radio(
-        "Flashcard Depth",
-        ["NCERT", "UPSC"],
-        horizontal=True,
-        key="flashcard_depth"
-    )
-
-    if not topic.strip():
-        st.info("Enter a topic above to generate flashcards.")
-    elif not chunks:
-        st.error("NCERT PDFs not loaded.")
-    else:
-        retrieved = retrieve_relevant_chunks(
-            chunks,
-            embed_chunks,   # ✅ this is NOW a numpy array
-            topic,
-            standard=flashcard_mode,
-            top_k=10
-        )
-
-        if not retrieved:
-            st.warning("❌ No NCERT content found for this topic.")
-        else:
-            st.markdown("### 🧠 Quick Revision Cards (Bullet Format)")
-
-            for i, para in enumerate(retrieved[:num_q], 1):
-                bullets = re.split(r"[.;]", para)
-                bullets = [b.strip() for b in bullets if len(b.split()) >= 6]
-
-                st.markdown(f"**📌 Flashcard {i}**")
-                for b in bullets[:5]:
-                    st.markdown(f"- {b}")
+    std4 = st.radio("Depth", ["NCERT", "UPSC"], key="flash_std", horizontal=True)
+    if topic and chunks:
+        rel = retrieve_relevant_chunks(chunks, embeddings, topic, std4, 10)
+        for i, card in enumerate(generate_flashcards(rel, num_q), 1):
+            st.markdown(f"**📌 Flashcard {i}**")
+            for b in card:
+                st.markdown(f"- {b}")
