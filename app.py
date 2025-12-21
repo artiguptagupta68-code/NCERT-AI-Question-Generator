@@ -169,38 +169,45 @@ def clean_sentence(s):
     return s.strip().capitalize()
 
 
+def normalize_text(s):
+    s = re.sub(r"\b([a-z])\s+([a-z])\b", r"\1\2", s)  # fix OCR splits
+    s = re.sub(r"\s+", " ", s)
+    return s.strip().capitalize()
+
+
 def generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
     cards = []
 
     for ch in chunks:
         sentences = re.split(r"[.;]", ch)
         sentences = [
-            clean_sentence(s)
+            normalize_text(s)
             for s in sentences
-            if is_conceptual(s) and len(s.split()) >= 6
+            if is_conceptual(s) and len(s.split()) >= 7
         ]
 
-        if not sentences:
+        if len(sentences) < 2:
             continue
 
         if mode == "NCERT":
-            card = {
-                "title": topic,
-                "bullets": sentences[:4]
-            }
+            paragraph = (
+                f"{sentences[0]}. "
+                f"{sentences[1]}. "
+                f"{sentences[2] if len(sentences) > 2 else ''}"
+            )
 
         else:  # UPSC MODE
-            card = {
-                "title": topic,
-                "bullets": [
-                    f"Core idea: {sentences[0]}",
-                    f"Constitutional significance: {sentences[1]}" if len(sentences) > 1 else "",
-                    "Used in GS-II / GS-IV answers",
-                    "Relevant for rights, governance and democracy questions"
-                ]
-            }
+            paragraph = (
+                f"{sentences[0]}. "
+                f"This idea has constitutional and democratic significance. "
+                f"{sentences[1]}. "
+                f"It is frequently used to interpret rights, governance and state responsibility in India."
+            )
 
-        cards.append(card)
+        cards.append({
+            "title": topic.capitalize(),
+            "content": paragraph.strip()
+        })
 
         if len(cards) >= max_cards:
             break
@@ -280,9 +287,6 @@ with tab3:
             for r in rel:
                 st.write(r)
 
-# --------------------------------------------
-# FLASHCARDS (NO BUTTON)
-# --------------------------------------------
 with tab4:
     st.subheader("📚 NCERT Flashcards (Concept Revision)")
 
@@ -301,7 +305,7 @@ with tab4:
             embeddings,
             topic,
             standard=flashcard_mode,
-            top_k=8
+            top_k=10
         )
 
         if not retrieved:
@@ -316,7 +320,4 @@ with tab4:
 
             for i, card in enumerate(cards, 1):
                 st.markdown(f"### 📌 Flashcard {i}: {card['title']}")
-                for b in card["bullets"]:
-                    if b:
-                        st.markdown(f"- {b}")
-
+                st.write(card["content"])
