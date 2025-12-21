@@ -214,6 +214,51 @@ def generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
 
     return cards
 
+# --------------------------------------------
+# TAB 5: Active Learning & Fill-in-the-Blanks
+# --------------------------------------------
+tab5 = st.tab("📝 Active Learning")
+
+def generate_active_topic_flashcards(chunks, max_cards=5):
+    cards = []
+    for ch in chunks:
+        sentences = [s.strip() for s in re.split(r"[.;]", ch) if is_conceptual(s)]
+        if len(sentences) < 2:
+            continue
+        
+        # Infer topic from frequent nouns/keywords
+        words = [w.lower() for w in " ".join(sentences).split() if len(w) > 3]
+        topic = max(set(words), key=words.count) if words else "General"
+
+        paragraph = " ".join(sentences[:3])
+        cards.append({"title": topic.capitalize(), "content": paragraph.strip()})
+
+        if len(cards) >= max_cards:
+            break
+    return cards
+
+def generate_fill_in_blank_flashcards(chunks, max_cards=5):
+    cards = []
+    for ch in chunks:
+        sentences = [s.strip() for s in re.split(r"[.;]", ch) if is_conceptual(s)]
+        if len(sentences) < 2:
+            continue
+
+        paragraph = " ".join(sentences[:3])
+        words = paragraph.split()
+        important_words = [w for w in words if len(w) > 5 and w.isalpha()]
+        num_blanks = max(1, len(important_words)//7)
+        blanks = random.sample(important_words, num_blanks)
+
+        for b in blanks:
+            paragraph = re.sub(r"\b{}\b".format(re.escape(b)), "_____", paragraph, count=1)
+
+        cards.append({"title": "Fill in the blanks", "content": paragraph.strip()})
+
+        if len(cards) >= max_cards:
+            break
+    return cards
+
 
 # --------------------------------------------
 # SIDEBAR
@@ -322,50 +367,7 @@ with tab4:
                 st.markdown(f"### 📌 Flashcard {i}: {card['title']}")
                 st.write(card["content"])
 
-# --------------------------------------------
-# TAB 5: Active Learning & Fill-in-the-Blanks
-# --------------------------------------------
-tab5 = st.tab("📝 Active Learning")
 
-def generate_active_topic_flashcards(chunks, max_cards=5):
-    cards = []
-    for ch in chunks:
-        sentences = [s.strip() for s in re.split(r"[.;]", ch) if is_conceptual(s)]
-        if len(sentences) < 2:
-            continue
-        
-        # Infer topic from frequent nouns/keywords
-        words = [w.lower() for w in " ".join(sentences).split() if len(w) > 3]
-        topic = max(set(words), key=words.count) if words else "General"
-
-        paragraph = " ".join(sentences[:3])
-        cards.append({"title": topic.capitalize(), "content": paragraph.strip()})
-
-        if len(cards) >= max_cards:
-            break
-    return cards
-
-def generate_fill_in_blank_flashcards(chunks, max_cards=5):
-    cards = []
-    for ch in chunks:
-        sentences = [s.strip() for s in re.split(r"[.;]", ch) if is_conceptual(s)]
-        if len(sentences) < 2:
-            continue
-
-        paragraph = " ".join(sentences[:3])
-        words = paragraph.split()
-        important_words = [w for w in words if len(w) > 5 and w.isalpha()]
-        num_blanks = max(1, len(important_words)//7)
-        blanks = random.sample(important_words, num_blanks)
-
-        for b in blanks:
-            paragraph = re.sub(r"\b{}\b".format(re.escape(b)), "_____", paragraph, count=1)
-
-        cards.append({"title": "Fill in the blanks", "content": paragraph.strip()})
-
-        if len(cards) >= max_cards:
-            break
-    return cards
 
 with tab5:
     st.subheader("Active Learning Flashcards (Auto Topic)")
