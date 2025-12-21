@@ -245,12 +245,7 @@ tab1, tab2, tab3, tab4 = st.tabs(
 # --------------------------------------------
 # SUBJECTIVE
 # --------------------------------------------
-standard = st.radio(
-    "Standard",
-    ["NCERT", "UPSC"],
-    horizontal=True,
-    key="subjective_standard"
-)
+
 
 with tab1:
     standard = st.radio(
