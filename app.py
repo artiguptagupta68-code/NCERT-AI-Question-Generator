@@ -306,37 +306,17 @@ with tab3:
 # FLASHCARDS
 # --------------------------------------------
 with tab4:
-    st.subheader("📚 Flashcards (NCERT-based Learning)")
-
     standard = st.radio(
-        "Learning Level",
-        ["NCERT", "UPSC"],
-        horizontal=True,
-        key="tab_flashcard_standard"
-    )
+    "Learning Level",
+    ["NCERT", "UPSC"],
+    horizontal=True,
+    key="flashcard_standard"
+)
 
-    if not topic.strip():
-        st.info("Enter a topic above to generate flashcards.")
-    elif not chunks:
-        st.error("NCERT PDFs not loaded.")
-    else:
-        retrieved = retrieve_relevant_chunks(
-            chunks,
-            chunk_embeddings,
-            topic,
-            standard=standard,
-            top_k=8
-        )
-
-        if not retrieved:
-            st.warning("No NCERT content found for this topic.")
-        else:
-            st.markdown("### 🧠 Learn Quickly (Bullet Memory Cards)")
-            for i, para in enumerate(retrieved, 1):
-                bullets = re.split(r"[.;]", para)
-                bullets = [b.strip() for b in bullets if len(b.split()) >= 5]
-
-                st.markdown(f"**Flashcard {i}**")
-                for b in bullets[:5]:
-                    st.markdown(f"- {b}")
-
+    if st.button("Generate Flashcards"):
+        rel = retrieve_relevant_chunks(chunks, embeddings, topic, standard)
+        cards = generate_flashcards(rel, topic, num_q)
+        for i, c in enumerate(cards, 1):
+            with st.expander(f"Flashcard {i}: {c['title']}"):
+                for p in c["points"]:
+                    st.write(f"• {p}")
