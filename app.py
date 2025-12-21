@@ -245,8 +245,20 @@ tab1, tab2, tab3, tab4 = st.tabs(
 # --------------------------------------------
 # SUBJECTIVE
 # --------------------------------------------
+standard = st.radio(
+    "Standard",
+    ["NCERT", "UPSC"],
+    horizontal=True,
+    key="subjective_standard"
+)
+
 with tab1:
-    standard = st.radio("Standard", ["NCERT", "UPSC"], horizontal=True)
+    standard = st.radio(
+    "Standard",
+    ["NCERT", "UPSC"],
+    horizontal=True,
+    key="subjective_standard"
+)
     if st.button("Generate Subjective Questions"):
         rel = retrieve_relevant_chunks(chunks, embeddings, topic, standard)
         qs = generate_subjective(topic, min(num_q, len(rel)), standard)
@@ -257,7 +269,13 @@ with tab1:
 # MCQs
 # --------------------------------------------
 with tab2:
-    standard = st.radio("Standard", ["NCERT", "UPSC"], horizontal=True)
+    standard = st.radio(
+    "Standard",
+    ["NCERT", "UPSC"],
+    horizontal=True,
+    key="mcq_standard"
+)
+
     if st.button("Generate MCQs"):
         rel = retrieve_relevant_chunks(chunks, embeddings, topic, standard)
         mcqs = generate_ncert_mcqs(rel, topic, num_q)
@@ -272,7 +290,13 @@ with tab2:
 # CHATBOT
 # --------------------------------------------
 with tab3:
-    standard = st.radio("Answer Style", ["NCERT", "UPSC"], horizontal=True)
+    standard = st.radio(
+    "Answer Style",
+    ["NCERT", "UPSC"],
+    horizontal=True,
+    key="chatbot_standard"
+)
+
     q = st.text_input("Ask strictly from NCERT")
     if st.button("Ask"):
         rel = retrieve_relevant_chunks(chunks, embeddings, q, standard, top_k=6)
@@ -287,7 +311,12 @@ with tab3:
 # FLASHCARDS
 # --------------------------------------------
 with tab4:
-    standard = st.radio("Learning Level", ["NCERT", "UPSC"], horizontal=True)
+    standard = st.radio(
+    "Learning Level",
+    ["NCERT", "UPSC"],
+    horizontal=True,
+    key="flashcard_standard"
+)
     if st.button("Generate Flashcards"):
         rel = retrieve_relevant_chunks(chunks, embeddings, topic, standard)
         cards = generate_flashcards(rel, topic, num_q)
