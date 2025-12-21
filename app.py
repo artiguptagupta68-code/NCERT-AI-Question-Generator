@@ -321,7 +321,7 @@ with tab4:
         else:
             retrieved = retrieve_relevant_chunks(
                 chunks,
-                chunk_embeddings,
+                embed_chunks,
                 topic,
                 standard=flashcard_mode,
                 top_k=10
