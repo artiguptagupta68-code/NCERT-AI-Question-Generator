@@ -302,35 +302,38 @@ with tab3:
             for r in rel:
                 st.write(r)
 
-# --------------------------------------------
-# FLASHCARDS
-# --------------------------------------------
-# --------------------------------------------
-# FLASHCARDS (NCERT-only)
-# --------------------------------------------
-def generate_flashcards(chunks, topic, n):
-    cards = []
+with tab4:
+    st.subheader("📚 NCERT Flashcards (Concept Revision)")
 
-    sentences = [
-        s.strip()
-        for ch in chunks
-        for s in re.split(r"[.;]", ch)
-        if is_conceptual(s)
-    ]
+    flashcard_mode = st.radio(
+        "Flashcard Depth",
+        ["NCERT", "UPSC"],
+        horizontal=True,
+        key="flashcard_depth"
+    )
 
-    random.shuffle(sentences)
+    if not topic.strip():
+        st.info("Enter a topic above to generate flashcards.")
+    elif not chunks:
+        st.error("NCERT PDFs not loaded.")
+    else:
+        retrieved = retrieve_relevant_chunks(
+            chunks,
+            chunk_embeddings,   # ✅ this is NOW a numpy array
+            topic,
+            standard=flashcard_mode,
+            top_k=10
+        )
 
-    for s in sentences:
-        # Simple heuristic: definition-style or explanatory lines
-        if len(s.split()) >= 10:
-            cards.append(
-                {
-                    "q": f"What does NCERT say about {topic}?",
-                    "a": s
-                }
-            )
+        if not retrieved:
+            st.warning("❌ No NCERT content found for this topic.")
+        else:
+            st.markdown("### 🧠 Quick Revision Cards (Bullet Format)")
 
-        if len(cards) >= n:
-            break
+            for i, para in enumerate(retrieved[:num_q], 1):
+                bullets = re.split(r"[.;]", para)
+                bullets = [b.strip() for b in bullets if len(b.split()) >= 6]
 
-    return cards
+                st.markdown(f"**📌 Flashcard {i}**")
+                for b in bullets[:5]:
+                    st.markdown(f"- {b}")
