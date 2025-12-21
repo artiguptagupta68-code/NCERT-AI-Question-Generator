@@ -319,7 +319,7 @@ with tab4:
     else:
         retrieved = retrieve_relevant_chunks(
             chunks,
-            chunk_embeddings,   # ✅ this is NOW a numpy array
+            embed_chunks,   # ✅ this is NOW a numpy array
             topic,
             standard=flashcard_mode,
             top_k=10
