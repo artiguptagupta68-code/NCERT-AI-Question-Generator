@@ -305,40 +305,32 @@ with tab3:
 # --------------------------------------------
 # FLASHCARDS
 # --------------------------------------------
-with tab4:
-    st.subheader("NCERT Flashcards (Concept Revision)")
+# --------------------------------------------
+# FLASHCARDS (NCERT-only)
+# --------------------------------------------
+def generate_flashcards(chunks, topic, n):
+    cards = []
 
-    flashcard_mode = st.radio(
-        "Flashcard Depth",
-        ["NCERT", "UPSC"],
-        horizontal=True,
-        help="Both modes use NCERT. UPSC cards are slightly more analytical."
-    )
+    sentences = [
+        s.strip()
+        for ch in chunks
+        for s in re.split(r"[.;]", ch)
+        if is_conceptual(s)
+    ]
 
-    if st.button("Generate Flashcards"):
-        if not topic.strip():
-            st.error("Please enter a topic.")
-        else:
-            retrieved = retrieve_relevant_chunks(
-                chunks,
-                embed_chunks,
-                topic,
-                standard=flashcard_mode,
-                top_k=10
+    random.shuffle(sentences)
+
+    for s in sentences:
+        # Simple heuristic: definition-style or explanatory lines
+        if len(s.split()) >= 10:
+            cards.append(
+                {
+                    "q": f"What does NCERT say about {topic}?",
+                    "a": s
+                }
             )
 
-            if not retrieved:
-                st.error("❌ No NCERT content found for this topic.")
-            else:
-                cards = generate_flashcards(
-                    retrieved,
-                    topic,
-                    min(num_q, len(retrieved))
-                )
+        if len(cards) >= n:
+            break
 
-                st.success(f"Generated {len(cards)} flashcards")
-
-                for i, c in enumerate(cards, 1):
-                    with st.expander(f"📌 Flashcard {i}"):
-                        st.markdown(f"**Q:** {c['q']}")
-                        st.markdown(f"**A:** {c['a']}")
+    return cards
