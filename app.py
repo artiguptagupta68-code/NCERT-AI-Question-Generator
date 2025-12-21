@@ -164,12 +164,49 @@ def generate_ncert_mcqs(chunks, topic, n):
     return mcqs
 
 
-def generate_flashcards(chunks, n):
+def clean_sentence(s):
+    s = re.sub(r"\b(r\s+e|c\s+i|n\s+a|ar\s+e)\b", "", s)
+    return s.strip().capitalize()
+
+
+def generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
     cards = []
-    for ch in chunks[:n]:
-        bullets = [b.strip() for b in re.split(r"[.;]", ch) if is_conceptual(b)]
-        cards.append(bullets[:5])
+
+    for ch in chunks:
+        sentences = re.split(r"[.;]", ch)
+        sentences = [
+            clean_sentence(s)
+            for s in sentences
+            if is_conceptual(s) and len(s.split()) >= 6
+        ]
+
+        if not sentences:
+            continue
+
+        if mode == "NCERT":
+            card = {
+                "title": topic,
+                "bullets": sentences[:4]
+            }
+
+        else:  # UPSC MODE
+            card = {
+                "title": topic,
+                "bullets": [
+                    f"Core idea: {sentences[0]}",
+                    f"Constitutional significance: {sentences[1]}" if len(sentences) > 1 else "",
+                    "Used in GS-II / GS-IV answers",
+                    "Relevant for rights, governance and democracy questions"
+                ]
+            }
+
+        cards.append(card)
+
+        if len(cards) >= max_cards:
+            break
+
     return cards
+
 
 # --------------------------------------------
 # SIDEBAR
@@ -247,10 +284,39 @@ with tab3:
 # FLASHCARDS (NO BUTTON)
 # --------------------------------------------
 with tab4:
-    std4 = st.radio("Depth", ["NCERT", "UPSC"], key="flash_std", horizontal=True)
-    if topic and chunks:
-        rel = retrieve_relevant_chunks(chunks, embeddings, topic, std4, 10)
-        for i, card in enumerate(generate_flashcards(rel, num_q), 1):
-            st.markdown(f"**📌 Flashcard {i}**")
-            for b in card:
-                st.markdown(f"- {b}")
+    st.subheader("📚 NCERT Flashcards (Concept Revision)")
+
+    flashcard_mode = st.radio(
+        "Flashcard Depth",
+        ["NCERT", "UPSC"],
+        horizontal=True,
+        key="flashcard_depth"
+    )
+
+    if not topic.strip():
+        st.info("Enter a topic above to generate flashcards.")
+    else:
+        retrieved = retrieve_relevant_chunks(
+            chunks,
+            embeddings,
+            topic,
+            standard=flashcard_mode,
+            top_k=8
+        )
+
+        if not retrieved:
+            st.warning("❌ No NCERT content found.")
+        else:
+            cards = generate_flashcards(
+                retrieved,
+                topic,
+                mode=flashcard_mode,
+                max_cards=num_q
+            )
+
+            for i, card in enumerate(cards, 1):
+                st.markdown(f"### 📌 Flashcard {i}: {card['title']}")
+                for b in card["bullets"]:
+                    if b:
+                        st.markdown(f"- {b}")
+
