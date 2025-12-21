@@ -301,7 +301,9 @@ st.write(f"🧩 Total chunks extracted: {len(chunks)}")
 # --------------------------------------------
 # TABS
 # --------------------------------------------
-tab1, tab2 = st.tabs(["📝 Subjective", "🧠 MCQs (NCERT + UPSC)"])
+tab1, tab2, tab3 = st.tabs(
+    ["📝 Subjective", "🧠 MCQs (NCERT + UPSC)", "💬 Ask NCERT / UPSC"]
+)
 
 # --------------------------------------------
 # SUBJECTIVE TAB
@@ -387,3 +389,37 @@ with tab2:
                         st.write("d) A is false but R is true")
                         st.write(f"✅ Answer: {q['answer']}")
                         st.write("---")
+
+# ============================================
+# CHATBOT TAB (NCERT + UPSC)  ✅ NEW
+# ============================================
+with tab3:
+    st.subheader("Ask anything strictly from NCERT")
+
+    chatbot_mode = st.radio(
+        "Answer Style",
+        ["NCERT", "UPSC"],
+        horizontal=True,
+        help="Both modes use ONLY NCERT PDFs. UPSC mode is more analytical."
+    )
+
+    user_q = st.text_input("Enter your question")
+
+    if st.button("Ask NCERT"):
+        if not user_q.strip():
+            st.error("Please enter a question.")
+        else:
+            retrieved = retrieve_relevant_chunks(
+                chunks,
+                chunk_embeddings,
+                user_q,
+                standard=chatbot_mode,
+                top_k=6
+            )
+
+            if not retrieved:
+                st.error("❌ Answer not found in NCERT textbooks.")
+            else:
+                st.markdown("### 📘 NCERT-based answer:")
+                for para in retrieved:
+                    st.write(para)
