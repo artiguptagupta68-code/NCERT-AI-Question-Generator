@@ -16,9 +16,11 @@ from pypdf import PdfReader
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 
-# Download NLTK punkt tokenizer if not present
-nltk.download('punkt')
 
+try:
+    nltk.data.find("tokenizers/punkt")
+except LookupError:
+    nltk.download("punkt")
 # --------------------------------------------
 # CONFIG
 # --------------------------------------------
