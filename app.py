@@ -203,21 +203,13 @@ def generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
     count = 0
 
     for ch in chunks:
-        # Only keep conceptual sentences
+        # Keep only conceptual sentences
         sentences = [normalize_text(s) for s in re.split(r"[.;]", ch) if is_conceptual(s)]
         if not sentences:
             continue
 
-        # Join sentences and summarize
-        text_block = " ".join(sentences)
-
-        # Summarize with gensim (fallback to first 2 sentences if too short)
-        try:
-            summary = summarize(text_block, word_count=40)
-            if not summary:
-                summary = " ".join(sentences[:2])
-        except:
-            summary = " ".join(sentences[:2])
+        # Summarize manually: pick first 2-3 key sentences
+        summary = " ".join(sentences[:3])
 
         cards.append({
             "title": topic.capitalize(),
@@ -229,9 +221,6 @@ def generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
             break
 
     return cards
-
-
-
 
 
 
