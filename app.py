@@ -308,16 +308,35 @@ with tab2:
 
 # CHATBOT
 with tab3:
-    std3 = st.radio("Answer Style", ["NCERT", "UPSC"], key="chat_std", horizontal=True)
-    q = st.text_input("Ask strictly from NCERT")
-    if st.button("Ask"):
-        rel = retrieve_relevant_chunks(chunks, embeddings, q, std3, 8)
-        answer = generate_chatbot_answer(rel, q, std3)
-        if not answer:
-            st.error("❌ This topic is not directly explained in NCERT.")
+    st.subheader("Ask anything strictly from NCERT")
+
+    chatbot_mode = st.radio(
+        "Answer Style",
+        ["NCERT", "UPSC"],
+        horizontal=True,
+        help="Both modes use ONLY NCERT PDFs. UPSC mode is more analytical."
+    )
+
+    user_q = st.text_input("Enter your question")
+
+    if st.button("Ask NCERT"):
+        if not user_q.strip():
+            st.error("Please enter a question.")
         else:
-            st.markdown("### 📘 NCERT-based Answer")
-            st.write(answer)
+            retrieved = retrieve_relevant_chunks(
+                chunks,
+                chunk_embeddings,
+                user_q,
+                standard=chatbot_mode,
+                top_k=6
+            )
+
+            if not retrieved:
+                st.error("❌ Answer not found in NCERT textbooks.")
+            else:
+                st.markdown("### 📘 NCERT-based answer:")
+                for para in retrieved:
+                    st.write(para))
 
 # FLASHCARDS
 with tab4:
