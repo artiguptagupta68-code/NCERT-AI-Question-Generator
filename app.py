@@ -192,7 +192,7 @@ def normalize_text(s):
     return s.strip().capitalize()
 
 
-ddef generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
+def generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
     """
     Generates flashcards with complete, self-contained summaries.
     Each flashcard covers a conceptual context and presents the information in a concise paragraph.
