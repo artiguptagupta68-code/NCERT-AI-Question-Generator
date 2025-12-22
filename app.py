@@ -228,7 +228,7 @@ def generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
     return cards
 
 
-ddef generate_chatbot_answer(chunks, question, standard="NCERT"):
+def generate_chatbot_answer(chunks, question, standard="NCERT"):
     if not chunks:
         return None
 
