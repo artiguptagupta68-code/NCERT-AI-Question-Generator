@@ -12,7 +12,7 @@ gdown
 PdfReader
 pdf2image
 pytesseract
-
+sumy
 scikit-learn
 
 
