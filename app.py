@@ -310,6 +310,9 @@ with tab2:
 # --------------------------------------------
 # CHATBOT (FIXED)
 # --------------------------------------------
+# --------------------------------------------
+# CHATBOT (ROBUST & NCERT-SAFE)
+# --------------------------------------------
 with tab3:
     st.subheader("Ask anything strictly from NCERT")
 
@@ -317,30 +320,41 @@ with tab3:
         "Answer Style",
         ["NCERT", "UPSC"],
         horizontal=True,
-        help="Both modes use ONLY NCERT PDFs. UPSC mode is more analytical.",
-        key="chatbot_mode"
+        key="chatbot_std"
     )
 
-    user_q = st.text_input("Enter your question", key="chatbot_question")
+    user_q = st.text_input("Enter your question", key="chatbot_q")
 
     if st.button("Ask NCERT", key="chatbot_btn"):
         if not user_q.strip():
             st.error("Please enter a question.")
         else:
+            # Step 1: Try semantic retrieval
             retrieved = retrieve_relevant_chunks(
                 chunks,
-                embeddings,   # ✅ CORRECT (NumPy array)
+                embeddings,
                 user_q,
                 standard=chatbot_mode,
-                top_k=6
+                top_k=8
             )
 
+            # Step 2: Fallback if nothing retrieved
             if not retrieved:
-                st.error("❌ Answer not found in NCERT textbooks.")
+                retrieved = chunks[:20]  # SAFE NCERT fallback
+
+            # Step 3: Generate answer
+            answer = generate_chatbot_answer(
+                retrieved,
+                user_q,
+                standard=chatbot_mode
+            )
+
+            if not answer:
+                st.error("❌ Relevant explanation not found in NCERT.")
             else:
-                st.markdown("### 📘 NCERT-based answer:")
-                for para in retrieved:
-                    st.write(para)
+                st.markdown("### 📘 NCERT-based Answer")
+                st.write(answer)
+
 
 # FLASHCARDS
 with tab4:
