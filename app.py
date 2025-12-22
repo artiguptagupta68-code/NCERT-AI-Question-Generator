@@ -192,10 +192,10 @@ def normalize_text(s):
     return s.strip().capitalize()
 
 
-def generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
+ddef generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
     """
-    Generates concise flashcards from conceptual chunks.
-    Each flashcard represents one context in summarized form.
+    Generates flashcards with complete, self-contained summaries.
+    Each flashcard covers a conceptual context and presents the information in a concise paragraph.
     """
     cards = []
     count = 0
@@ -206,12 +206,19 @@ def generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
         if not sentences:
             continue
 
-        # Summarize manually: pick first 2-3 key sentences
-        summary = " ".join(sentences[:3])
+        # Create a complete paragraph from the chunk
+        paragraph = " ".join(sentences)
+
+        if mode == "UPSC":
+            # Add analytical/interpretative context for UPSC
+            paragraph = (
+                f"{paragraph} This concept has relevance for constitutional understanding, "
+                f"governance, and the interpretation of rights in contemporary India."
+            )
 
         cards.append({
             "title": topic.capitalize(),
-            "content": summary
+            "content": paragraph
         })
 
         count += 1
