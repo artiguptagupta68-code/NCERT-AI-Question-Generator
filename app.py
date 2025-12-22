@@ -1,6 +1,6 @@
 # ============================================
 # NCERT + UPSC Exam-Ready Generator (RAG-based)
-# Streamlit-safe | Original logic preserved
+# Streamlit-safe | Summarized Flashcards
 # ============================================
 
 import os, zipfile, re, random
@@ -12,6 +12,7 @@ import numpy as np
 from pypdf import PdfReader
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
+from gensim.summarization import summarize
 
 # --------------------------------------------
 # CONFIG
@@ -107,10 +108,9 @@ def semantic_chunks(text):
     return [" ".join(sents[i:i+3]) for i in range(0, len(sents), 3)]
 
 
-def is_conceptual(sentence):
-    s = sentence.lower()
-    skip = ["chapter", "unit", "page", "contents", "glossary", "figure", "table"]
-    return not any(k in s for k in skip) and 8 <= len(s.split()) <= 60
+def is_conceptual(s):
+    skip = ["chapter", "unit", "page", "contents", "figure", "table"]
+    return 8 <= len(s.split()) <= 60 and not any(k in s.lower() for k in skip)
 
 
 # --------------------------------------------
@@ -192,41 +192,31 @@ def normalize_text(s):
     return s.strip().capitalize()
 
 
+# --------------------------------------------
+# SUMMARIZED FLASHCARDS
+# --------------------------------------------
 def generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
-    """
-    Generates flashcards with complete, self-contained summaries.
-    Each flashcard covers a conceptual context and presents the information in a concise paragraph.
-    """
     cards = []
-    count = 0
-
     for ch in chunks:
-        # Keep only conceptual sentences
         sentences = [normalize_text(s) for s in re.split(r"[.;]", ch) if is_conceptual(s)]
         if not sentences:
             continue
+        paragraph = ". ".join(sentences)
+        try:
+            summary = summarize(paragraph, word_count=80)
+            if not summary:
+                summary = paragraph
+        except:
+            summary = paragraph
 
-        # Create a complete paragraph from the chunk
-        paragraph = " ".join(sentences)
+        if mode.upper() == "UPSC":
+            summary += " This concept has constitutional, political, and governance relevance in contemporary India."
 
-        if mode == "UPSC":
-            # Add analytical/interpretative context for UPSC
-            paragraph = (
-                f"{paragraph} This concept has relevance for constitutional understanding, "
-                f"governance, and the interpretation of rights in contemporary India."
-            )
+        cards.append({"title": topic.capitalize(), "content": summary.strip()})
 
-        cards.append({
-            "title": topic.capitalize(),
-            "content": paragraph
-        })
-
-        count += 1
-        if count >= max_cards:
+        if len(cards) >= max_cards:
             break
-
     return cards
-
 
 
 # --------------------------------------------
@@ -245,7 +235,6 @@ num_q = st.number_input("Number of Questions", 1, 10, 5)
 # LOAD DATA
 # --------------------------------------------
 texts, chunks = [], []
-
 if os.path.exists(EXTRACT_DIR):
     texts = load_all_texts(subject)
     for t in texts:
@@ -259,9 +248,7 @@ st.write(f"🧩 Chunks created: {len(chunks)}")
 # --------------------------------------------
 # TABS
 # --------------------------------------------
-tab1, tab2, tab3, tab4 = st.tabs(
-    ["📝 Subjective", "🧠 MCQs", "💬 Ask NCERT", "🧠 Flashcards"]
-)
+tab1, tab2, tab3, tab4 = st.tabs(["📝 Subjective", "🧠 MCQs", "💬 Ask NCERT", "🧠 Flashcards"])
 
 # SUBJECTIVE
 with tab1:
@@ -284,42 +271,29 @@ with tab2:
             st.write("---")
 
 # CHATBOT
-# --------------------------------------------
-# CHATBOT (FIXED)
-# --------------------------------------------
-# --------------------------------------------
-# CHATBOT (ROBUST & NCERT-SAFE)
-# --------------------------------------------
 with tab3:
     st.subheader("Ask anything strictly from NCERT")
-
-    chatbot_mode = st.radio(
-        "Answer Style",
-        ["NCERT", "UPSC"],
-        horizontal=True,
-        help="Both modes use ONLY NCERT PDFs. UPSC mode is more analytical."
-    )
-
+    chatbot_mode = st.radio("Answer Style", ["NCERT", "UPSC"], horizontal=True)
     user_q = st.text_input("Enter your question")
 
     if st.button("Ask NCERT"):
         if not user_q.strip():
             st.error("Please enter a question.")
         else:
-            retrieved = retrieve_relevant_chunks(
-                chunks,
-                embeddings,
-                user_q,
-                standard=chatbot_mode,
-                top_k=6
-            )
-
+            retrieved = retrieve_relevant_chunks(chunks, embeddings, user_q, standard=chatbot_mode, top_k=6)
             if not retrieved:
                 st.error("❌ Answer not found in NCERT textbooks.")
             else:
                 st.markdown("### 📘 NCERT-based answer:")
-                for para in retrieved:
-                    st.write(para)
+                # Summarize retrieved paragraphs for chatbot answer
+                answer_text = " ".join(re.sub(r'\s+', ' ', r) for r in retrieved)
+                try:
+                    summary = summarize(answer_text, word_count=150)
+                    if not summary:
+                        summary = answer_text
+                except:
+                    summary = answer_text
+                st.write(summary)
 
 # FLASHCARDS
 with tab4:
