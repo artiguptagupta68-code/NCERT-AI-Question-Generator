@@ -336,7 +336,7 @@ with tab3:
             else:
                 st.markdown("### 📘 NCERT-based answer:")
                 for para in retrieved:
-                    st.write(para))
+                    st.write(para)
 
 # FLASHCARDS
 with tab4:
