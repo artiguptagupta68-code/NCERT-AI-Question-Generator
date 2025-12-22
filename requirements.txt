@@ -12,4 +12,4 @@ gdown
 PdfReader
 pdf2image
 pytesseract
-gensim
+gensim summarization
