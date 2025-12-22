@@ -307,6 +307,9 @@ with tab2:
             st.write("---")
 
 # CHATBOT
+# --------------------------------------------
+# CHATBOT (FIXED)
+# --------------------------------------------
 with tab3:
     st.subheader("Ask anything strictly from NCERT")
 
@@ -314,18 +317,19 @@ with tab3:
         "Answer Style",
         ["NCERT", "UPSC"],
         horizontal=True,
-        help="Both modes use ONLY NCERT PDFs. UPSC mode is more analytical."
+        help="Both modes use ONLY NCERT PDFs. UPSC mode is more analytical.",
+        key="chatbot_mode"
     )
 
-    user_q = st.text_input("Enter your question")
+    user_q = st.text_input("Enter your question", key="chatbot_question")
 
-    if st.button("Ask NCERT"):
+    if st.button("Ask NCERT", key="chatbot_btn"):
         if not user_q.strip():
             st.error("Please enter a question.")
         else:
             retrieved = retrieve_relevant_chunks(
                 chunks,
-                embed_chunks,
+                embeddings,   # ✅ CORRECT (NumPy array)
                 user_q,
                 standard=chatbot_mode,
                 top_k=6
