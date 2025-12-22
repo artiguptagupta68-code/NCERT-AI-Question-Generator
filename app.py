@@ -114,7 +114,7 @@ def is_conceptual(s):
         "phone", "email", "address", "office"
     ]
     s = s.lower()
-    return 8 <= len(s.split()) <= 60 and not any(k in s for k in skip)
+    return 8 <= len(s.split()) <= 80 and not any(k in s for k in skip)
 
 
 # --------------------------------------------
@@ -230,7 +230,7 @@ def generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
 
 def generate_chatbot_answer(chunks, question, standard="NCERT"):
     if not chunks:
-        return None
+        return "❌ No relevant content found."
 
     sentences = []
     for ch in chunks:
@@ -239,21 +239,21 @@ def generate_chatbot_answer(chunks, question, standard="NCERT"):
             if is_conceptual(s) and len(s.split()) > 5:
                 sentences.append(s)
 
-    if not sentences:
-        return None
-
     # Remove duplicates
     seen = set()
     clean = [s for s in sentences if not (s in seen or seen.add(s))]
 
-    if standard == "NCERT":
-        return " ".join(clean[:6])
+    if not clean:
+        return "❌ No relevant content found."
 
-    return (
-        f"{clean[0]} "
-        f"This concept has constitutional, political and governance relevance. "
-        f"{' '.join(clean[1:6])}"
-    )
+    if standard == "NCERT":
+        return " ".join(clean[:6])  # first 6 conceptual sentences
+    else:
+        return (
+            f"{clean[0]} "
+            f"This concept has constitutional, political, and governance relevance. "
+            f"{' '.join(clean[1:6])}"
+        )
 
 
 # --------------------------------------------
@@ -320,44 +320,23 @@ with tab2:
 with tab3:
     st.subheader("Ask anything strictly from NCERT")
 
-    chatbot_mode = st.radio(
-        "Answer Style",
-        ["NCERT", "UPSC"],
-        horizontal=True,
-        key="chatbot_std"
-    )
+    chatbot_mode = st.radio("Answer Style", ["NCERT", "UPSC"], horizontal=True)
+    user_q = st.text_input("Enter your question")
 
-    user_q = st.text_input("Enter your question", key="chatbot_q")
-
-    if st.button("Ask NCERT", key="chatbot_btn"):
+    if st.button("Ask NCERT"):
         if not user_q.strip():
             st.error("Please enter a question.")
         else:
-            # Step 1: Try semantic retrieval
             retrieved = retrieve_relevant_chunks(
                 chunks,
                 embeddings,
                 user_q,
                 standard=chatbot_mode,
-                top_k=8
+                top_k=10
             )
-
-            # Step 2: Fallback if nothing retrieved
-            if not retrieved:
-                retrieved = chunks[:20]  # SAFE NCERT fallback
-
-            # Step 3: Generate answer
-            answer = generate_chatbot_answer(
-                retrieved,
-                user_q,
-                standard=chatbot_mode
-            )
-
-            if not answer:
-                st.error("❌ Relevant explanation not found in NCERT.")
-            else:
-                st.markdown("### 📘 NCERT-based Answer")
-                st.write(answer)
+            answer = generate_chatbot_answer(retrieved, user_q, chatbot_mode)
+            st.markdown("### 📘 NCERT-based answer:")
+            st.write(answer)
 
 
 # FLASHCARDS
