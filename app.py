@@ -12,7 +12,11 @@ import numpy as np
 from pypdf import PdfReader
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
-from gensim.summarization import summarize
+
+# sumy imports
+from sumy.parsers.plaintext import PlaintextParser
+from sumy.nlp.tokenizers import Tokenizer
+from sumy.summarizers.lsa import LsaSummarizer
 
 # --------------------------------------------
 # CONFIG
@@ -70,14 +74,12 @@ def download_and_extract():
         except:
             pass
 
-
 def read_pdf(path):
     try:
         reader = PdfReader(path)
         return " ".join(p.extract_text() or "" for p in reader.pages)
     except:
         return ""
-
 
 def clean_text(text):
     text = re.sub(
@@ -88,10 +90,8 @@ def clean_text(text):
     )
     return re.sub(r"\s+", " ", text).strip()
 
-
 def pdf_matches_subject(path, subject):
     return any(k in path.lower() for k in SUBJECT_KEYWORDS[subject])
-
 
 def load_all_texts(subject):
     texts = []
@@ -102,16 +102,13 @@ def load_all_texts(subject):
                 texts.append(t)
     return texts
 
-
 def semantic_chunks(text):
     sents = re.split(r"(?<=[.])\s+", text)
     return [" ".join(sents[i:i+3]) for i in range(0, len(sents), 3)]
 
-
 def is_conceptual(s):
     skip = ["chapter", "unit", "page", "contents", "figure", "table"]
     return 8 <= len(s.split()) <= 60 and not any(k in s.lower() for k in skip)
-
 
 # --------------------------------------------
 # EMBEDDINGS
@@ -120,12 +117,10 @@ def is_conceptual(s):
 def embed_chunks(chunks):
     return embedder.encode(chunks, convert_to_numpy=True)
 
-
 # --------------------------------------------
 # SAFE RETRIEVAL
 # --------------------------------------------
 def retrieve_relevant_chunks(chunks, embeddings, query, standard="NCERT", top_k=10):
-
     if (
         not chunks
         or embeddings is None
@@ -146,7 +141,6 @@ def retrieve_relevant_chunks(chunks, embeddings, query, standard="NCERT", top_k=
         if sc >= threshold and is_conceptual(ch)
     ][:top_k]
 
-
 # --------------------------------------------
 # QUESTION GENERATORS
 # --------------------------------------------
@@ -166,7 +160,6 @@ def generate_subjective(topic, n, standard):
         ]
     return qs[:n]
 
-
 def generate_ncert_mcqs(chunks, topic, n):
     sents = [s for ch in chunks for s in re.split(r"[.;]", ch) if is_conceptual(s)]
     random.shuffle(sents)
@@ -185,15 +178,22 @@ def generate_ncert_mcqs(chunks, topic, n):
         })
     return mcqs
 
-
 def normalize_text(s):
     s = re.sub(r"\b([a-z])\s+([a-z])\b", r"\1\2", s)
     s = re.sub(r"\s+", " ", s)
     return s.strip().capitalize()
 
+# --------------------------------------------
+# SUMMARIZATION UTILITY
+# --------------------------------------------
+def summarize_text(text, num_sentences=3):
+    parser = PlaintextParser.from_string(text, Tokenizer("english"))
+    summarizer = LsaSummarizer()
+    summary = summarizer(parser.document, num_sentences)
+    return " ".join(str(s) for s in summary)
 
 # --------------------------------------------
-# SUMMARIZED FLASHCARDS
+# FLASHCARDS
 # --------------------------------------------
 def generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
     cards = []
@@ -202,22 +202,24 @@ def generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
         if not sentences:
             continue
         paragraph = ". ".join(sentences)
-        try:
-            summary = summarize(paragraph, word_count=80)
-            if not summary:
-                summary = paragraph
-        except:
-            summary = paragraph
-
+        summary = summarize_text(paragraph, num_sentences=3)
         if mode.upper() == "UPSC":
             summary += " This concept has constitutional, political, and governance relevance in contemporary India."
 
         cards.append({"title": topic.capitalize(), "content": summary.strip()})
-
         if len(cards) >= max_cards:
             break
     return cards
 
+# --------------------------------------------
+# CHATBOT
+# --------------------------------------------
+def generate_chatbot_answer(chunks, question, standard="NCERT", num_sentences=4):
+    if not chunks:
+        return "❌ Answer not found in NCERT textbooks."
+    combined_text = " ".join(chunks)
+    summary = summarize_text(combined_text, num_sentences=num_sentences)
+    return summary
 
 # --------------------------------------------
 # SIDEBAR
@@ -281,19 +283,9 @@ with tab3:
             st.error("Please enter a question.")
         else:
             retrieved = retrieve_relevant_chunks(chunks, embeddings, user_q, standard=chatbot_mode, top_k=6)
-            if not retrieved:
-                st.error("❌ Answer not found in NCERT textbooks.")
-            else:
-                st.markdown("### 📘 NCERT-based answer:")
-                # Summarize retrieved paragraphs for chatbot answer
-                answer_text = " ".join(re.sub(r'\s+', ' ', r) for r in retrieved)
-                try:
-                    summary = summarize(answer_text, word_count=150)
-                    if not summary:
-                        summary = answer_text
-                except:
-                    summary = answer_text
-                st.write(summary)
+            summary = generate_chatbot_answer(retrieved, user_q, standard=chatbot_mode)
+            st.markdown("### 📘 NCERT-based answer:")
+            st.write(summary)
 
 # FLASHCARDS
 with tab4:
