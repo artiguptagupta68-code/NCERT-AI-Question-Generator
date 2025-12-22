@@ -13,3 +13,8 @@ PdfReader
 pdf2image
 pytesseract
 
+scikit-learn
+
+gensim
+
+
