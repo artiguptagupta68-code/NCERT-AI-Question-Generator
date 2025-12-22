@@ -186,8 +186,8 @@ def generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
 
         # Lightweight summarization: pick first 20-40 words
         words = paragraph.split()
-        summary = " ".join(words[:40])  # first 40 words
-        if len(words) > 40:
+        summary = " ".join(words[:80])  # first 40 words
+        if len(words) > 80:
             summary += "..."  # indicate truncation
 
         if mode.upper() == "UPSC":
