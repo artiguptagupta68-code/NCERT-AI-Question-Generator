@@ -205,7 +205,6 @@ def simple_summarize(text, max_sentences=5):
 # --------------------------------------------
 # FLASHCARDS
 # --------------------------------------------
-)
 
 def generate_flashcards(chunks, topic, mode="NCERT", max_cards=1):
     """
