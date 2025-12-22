@@ -192,8 +192,6 @@ def normalize_text(s):
     return s.strip().capitalize()
 
 
-from gensim.summarization import summarize
-
 def generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
     """
     Generates concise flashcards from conceptual chunks.
