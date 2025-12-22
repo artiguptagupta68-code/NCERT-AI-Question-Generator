@@ -170,20 +170,35 @@ def normalize_text(s):
 # --------------------------------------------
 # SIMPLE FLASHCARD SUMMARIZER
 # --------------------------------------------
+# --------------------------------------------
+# FLASHCARD GENERATOR WITH FULL PARAGRAPH SUMMARIZATION
+# --------------------------------------------
 def generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
     cards = []
     for ch in chunks:
+        # Normalize and clean sentences
         sentences = [normalize_text(s) for s in re.split(r"(?<=[.?!])\s+", ch) if is_conceptual(s)]
         if not sentences:
             continue
-        # Take first 2-3 sentences as concise summary
-        summary = " ".join(sentences[:3])
+
+        # Take whole paragraph
+        paragraph = " ".join(sentences)
+
+        # Lightweight summarization: pick first 20-40 words
+        words = paragraph.split()
+        summary = " ".join(words[:40])  # first 40 words
+        if len(words) > 40:
+            summary += "..."  # indicate truncation
+
         if mode.upper() == "UPSC":
             summary += " This concept has constitutional, political, and governance relevance."
+
         cards.append({"title": topic.capitalize(), "content": summary.strip()})
+
         if len(cards) >= max_cards:
             break
     return cards
+
 
 # --------------------------------------------
 # SIDEBAR
