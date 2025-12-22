@@ -1,6 +1,6 @@
 # ============================================
 # NCERT + UPSC Exam-Ready Generator (RAG-based)
-# Streamlit-safe | Summarized Flashcards
+# Streamlit-safe | NLTK-based Summarized Flashcards
 # ============================================
 
 import os, zipfile, re, random
@@ -8,10 +8,16 @@ from pathlib import Path
 import streamlit as st
 import gdown
 import numpy as np
+import nltk
+from nltk.tokenize import sent_tokenize, word_tokenize
+from collections import Counter
+
 from pypdf import PdfReader
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
-from gensim.summarization import summarize
+
+# Download NLTK punkt tokenizer if not present
+nltk.download('punkt')
 
 # --------------------------------------------
 # CONFIG
@@ -56,6 +62,7 @@ def download_and_extract():
         gdown.download(f"https://drive.google.com/uc?id={FILE_ID}", ZIP_PATH)
 
     os.makedirs(EXTRACT_DIR, exist_ok=True)
+
     with zipfile.ZipFile(ZIP_PATH, "r") as z:
         z.extractall(EXTRACT_DIR)
 
@@ -68,6 +75,7 @@ def download_and_extract():
         except:
             pass
 
+
 def read_pdf(path):
     try:
         reader = PdfReader(path)
@@ -75,12 +83,20 @@ def read_pdf(path):
     except:
         return ""
 
+
 def clean_text(text):
-    text = re.sub(r"(activity|exercise|project|editor|isbn|copyright).*", " ", text, flags=re.I)
+    text = re.sub(
+        r"(activity|exercise|project|editor|isbn|copyright).*",
+        " ",
+        text,
+        flags=re.I,
+    )
     return re.sub(r"\s+", " ", text).strip()
+
 
 def pdf_matches_subject(path, subject):
     return any(k in path.lower() for k in SUBJECT_KEYWORDS[subject])
+
 
 def load_all_texts(subject):
     texts = []
@@ -91,13 +107,16 @@ def load_all_texts(subject):
                 texts.append(t)
     return texts
 
+
 def semantic_chunks(text):
     sents = re.split(r"(?<=[.])\s+", text)
     return [" ".join(sents[i:i+3]) for i in range(0, len(sents), 3)]
 
+
 def is_conceptual(s):
     skip = ["chapter", "unit", "page", "contents", "figure", "table"]
     return 8 <= len(s.split()) <= 60 and not any(k in s.lower() for k in skip)
+
 
 # --------------------------------------------
 # EMBEDDINGS
@@ -106,17 +125,26 @@ def is_conceptual(s):
 def embed_chunks(chunks):
     return embedder.encode(chunks, convert_to_numpy=True)
 
+
 # --------------------------------------------
 # SAFE RETRIEVAL
 # --------------------------------------------
 def retrieve_relevant_chunks(chunks, embeddings, query, standard="NCERT", top_k=10):
+
     if not chunks or embeddings is None or not isinstance(embeddings, np.ndarray) or embeddings.ndim != 2 or embeddings.shape[0] == 0:
         return []
+
     q_vec = embedder.encode([query], convert_to_numpy=True)
     sims = cosine_similarity(q_vec, embeddings)[0]
+
     threshold = SIMILARITY_THRESHOLD_UPSC if standard == "UPSC" else SIMILARITY_THRESHOLD_NCERT
     ranked = sorted(zip(chunks, sims), key=lambda x: x[1], reverse=True)
-    return [ch for ch, sc in ranked if sc >= threshold and is_conceptual(ch)][:top_k]
+
+    return [
+        ch for ch, sc in ranked
+        if sc >= threshold and is_conceptual(ch)
+    ][:top_k]
+
 
 # --------------------------------------------
 # QUESTION GENERATORS
@@ -137,15 +165,18 @@ def generate_subjective(topic, n, standard):
         ]
     return qs[:n]
 
+
 def generate_ncert_mcqs(chunks, topic, n):
     sents = [s for ch in chunks for s in re.split(r"[.;]", ch) if is_conceptual(s)]
     random.shuffle(sents)
+
     mcqs = []
     for s in sents[:n]:
         opts = random.sample(sents, min(4, len(sents)))
         if s not in opts:
             opts[0] = s
         random.shuffle(opts)
+
         mcqs.append({
             "q": f"Which statement best explains {topic}?",
             "options": opts,
@@ -153,34 +184,51 @@ def generate_ncert_mcqs(chunks, topic, n):
         })
     return mcqs
 
+
 def normalize_text(s):
     s = re.sub(r"\b([a-z])\s+([a-z])\b", r"\1\2", s)
     s = re.sub(r"\s+", " ", s)
     return s.strip().capitalize()
 
+
 # --------------------------------------------
-# SUMMARIZED FLASHCARDS
+# NLTK-BASED SUMMARIZER FOR FLASHCARDS & CHATBOT
 # --------------------------------------------
-def generate_summarized_flashcard(chunks, topic, mode="NCERT"):
-    if not chunks:
-        return None
-    sentences = []
+def summarize_text(text, max_sentences=3):
+    sentences = sent_tokenize(text)
+    if len(sentences) <= max_sentences:
+        return " ".join(sentences)
+    
+    words = [w.lower() for w in word_tokenize(text) if w.isalpha()]
+    freq = Counter(words)
+    
+    scored = []
+    for s in sentences:
+        score = sum(freq.get(w.lower(), 0) for w in word_tokenize(s) if w.isalpha())
+        scored.append((score, s))
+    
+    top_sents = [s for _, s in sorted(scored, reverse=True)[:max_sentences]]
+    return " ".join(top_sents)
+
+
+# --------------------------------------------
+# FLASHCARDS
+# --------------------------------------------
+def generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
+    cards = []
     for ch in chunks:
-        for s in re.split(r"[.;]", ch):
-            if is_conceptual(s):
-                sentences.append(s.strip())
-    if not sentences:
-        return None
-    paragraph = ". ".join(sentences)
-    try:
-        summary = summarize(paragraph, word_count=80)
-        if not summary:
-            summary = paragraph
-    except:
-        summary = paragraph
-    if mode.upper() == "UPSC":
-        summary += " This concept has constitutional, political, and governance relevance in contemporary India."
-    return {"title": topic.capitalize(), "content": summary.strip()}
+        sentences = [normalize_text(s) for s in re.split(r"[.;]", ch) if is_conceptual(s)]
+        if not sentences:
+            continue
+        paragraph = ". ".join(sentences)
+        summary = summarize_text(paragraph, max_sentences=3)
+        if mode.upper() == "UPSC":
+            summary += " This concept has constitutional, political, and governance relevance in contemporary India."
+        cards.append({"title": topic.capitalize(), "content": summary.strip()})
+        if len(cards) >= max_cards:
+            break
+    return cards
+
 
 # --------------------------------------------
 # SIDEBAR
@@ -204,6 +252,7 @@ if os.path.exists(EXTRACT_DIR):
         chunks.extend(semantic_chunks(t))
 
 embeddings = embed_chunks(chunks) if chunks else np.empty((0, 384))
+
 st.write(f"📄 PDFs used: {len(texts)}")
 st.write(f"🧩 Chunks created: {len(chunks)}")
 
@@ -237,6 +286,7 @@ with tab3:
     st.subheader("Ask anything strictly from NCERT")
     chatbot_mode = st.radio("Answer Style", ["NCERT", "UPSC"], horizontal=True)
     user_q = st.text_input("Enter your question")
+
     if st.button("Ask NCERT"):
         if not user_q.strip():
             st.error("Please enter a question.")
@@ -247,12 +297,7 @@ with tab3:
             else:
                 st.markdown("### 📘 NCERT-based answer:")
                 answer_text = " ".join(re.sub(r'\s+', ' ', r) for r in retrieved)
-                try:
-                    summary = summarize(answer_text, word_count=150)
-                    if not summary:
-                        summary = answer_text
-                except:
-                    summary = answer_text
+                summary = summarize_text(answer_text, max_sentences=5)
                 st.write(summary)
 
 # FLASHCARDS
@@ -260,9 +305,7 @@ with tab4:
     mode = st.radio("Depth", ["NCERT", "UPSC"], key="flash_std", horizontal=True)
     if topic.strip():
         rel = retrieve_relevant_chunks(chunks, embeddings, topic, mode, 10)
-        card = generate_summarized_flashcard(rel, topic, mode)
-        if card:
-            st.markdown(f"### 📌 Flashcard: {card['title']}")
-            st.write(card["content"])
-        else:
-            st.warning("No conceptual content found to create flashcard.")
+        cards = generate_flashcards(rel, topic, mode, num_q)
+        for i, c in enumerate(cards, 1):
+            st.markdown(f"### 📌 Flashcard {i}: {c['title']}")
+            st.write(c["content"])
