@@ -121,14 +121,12 @@ def embed_chunks(chunks):
 
 
 # --------------------------------------------
-# 🔒 SAFE RETRIEVAL (CRITICAL FIX)
+# SAFE RETRIEVAL
 # --------------------------------------------
 def retrieve_relevant_chunks(chunks, embeddings, query, standard="NCERT", top_k=10):
 
-    # 🚨 HARD GUARD — prevents cosine_similarity crash
     if (
-        chunks is None
-        or len(chunks) == 0
+        not chunks
         or embeddings is None
         or not isinstance(embeddings, np.ndarray)
         or embeddings.ndim != 2
@@ -139,12 +137,7 @@ def retrieve_relevant_chunks(chunks, embeddings, query, standard="NCERT", top_k=
     q_vec = embedder.encode([query], convert_to_numpy=True)
     sims = cosine_similarity(q_vec, embeddings)[0]
 
-    threshold = (
-        SIMILARITY_THRESHOLD_UPSC
-        if standard == "UPSC"
-        else SIMILARITY_THRESHOLD_NCERT
-    )
-
+    threshold = SIMILARITY_THRESHOLD_UPSC if standard == "UPSC" else SIMILARITY_THRESHOLD_NCERT
     ranked = sorted(zip(chunks, sims), key=lambda x: x[1], reverse=True)
 
     return [
@@ -154,7 +147,7 @@ def retrieve_relevant_chunks(chunks, embeddings, query, standard="NCERT", top_k=
 
 
 # --------------------------------------------
-# QUESTION GENERATORS (UNCHANGED)
+# QUESTION GENERATORS
 # --------------------------------------------
 def generate_subjective(topic, n, standard):
     if standard == "NCERT":
@@ -200,14 +193,12 @@ def normalize_text(s):
 
 def generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
     cards = []
-
     for ch in chunks:
         sentences = [
             normalize_text(s)
             for s in re.split(r"[.;]", ch)
             if is_conceptual(s)
         ]
-
         if len(sentences) < 2:
             continue
 
@@ -232,6 +223,35 @@ def generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
     return cards
 
 
+def generate_chatbot_answer(chunks, question, standard="NCERT"):
+    if not chunks:
+        return None
+
+    sentences = []
+    for ch in chunks:
+        for s in re.split(r"[.;]", ch):
+            if is_conceptual(s):
+                sentences.append(normalize_text(s))
+
+    if not sentences:
+        return None
+
+    seen, clean = set(), []
+    for s in sentences:
+        if s not in seen:
+            seen.add(s)
+            clean.append(s)
+
+    if standard == "NCERT":
+        return " ".join(clean[:6])
+
+    return (
+        f"{clean[0]} "
+        f"This concept has constitutional, political and governance relevance. "
+        f"{' '.join(clean[1:6])}"
+    )
+
+
 # --------------------------------------------
 # SIDEBAR
 # --------------------------------------------
@@ -254,7 +274,6 @@ if os.path.exists(EXTRACT_DIR):
     for t in texts:
         chunks.extend(semantic_chunks(t))
 
-# ✅ ALWAYS 2D — NEVER EMPTY 1D
 embeddings = embed_chunks(chunks) if chunks else np.empty((0, 384))
 
 st.write(f"📄 PDFs used: {len(texts)}")
@@ -267,9 +286,7 @@ tab1, tab2, tab3, tab4 = st.tabs(
     ["📝 Subjective", "🧠 MCQs", "💬 Ask NCERT", "🧠 Flashcards"]
 )
 
-# --------------------------------------------
 # SUBJECTIVE
-# --------------------------------------------
 with tab1:
     std1 = st.radio("Standard", ["NCERT", "UPSC"], key="sub_std", horizontal=True)
     if st.button("Generate Subjective"):
@@ -277,9 +294,7 @@ with tab1:
         for i, q in enumerate(generate_subjective(topic, min(num_q, len(rel)), std1), 1):
             st.write(f"{i}. {q}")
 
-# --------------------------------------------
 # MCQs
-# --------------------------------------------
 with tab2:
     std2 = st.radio("Standard", ["NCERT", "UPSC"], key="mcq_std", horizontal=True)
     if st.button("Generate MCQs"):
@@ -291,29 +306,22 @@ with tab2:
             st.write(f"✅ Answer: {chr(97+m['answer'])}")
             st.write("---")
 
-# --------------------------------------------
 # CHATBOT
-# --------------------------------------------
 with tab3:
     std3 = st.radio("Answer Style", ["NCERT", "UPSC"], key="chat_std", horizontal=True)
     q = st.text_input("Ask strictly from NCERT")
     if st.button("Ask"):
-        rel = retrieve_relevant_chunks(chunks, embeddings, q, std3, 6)
-        if not rel:
-            st.error("❌ Not found in NCERT")
+        rel = retrieve_relevant_chunks(chunks, embeddings, q, std3, 8)
+        answer = generate_chatbot_answer(rel, q, std3)
+        if not answer:
+            st.error("❌ This topic is not directly explained in NCERT.")
         else:
-            st.markdown("### 📘 NCERT-based answer")
-            for r in rel:
-                st.write(r)
+            st.markdown("### 📘 NCERT-based Answer")
+            st.write(answer)
 
-# --------------------------------------------
 # FLASHCARDS
-# --------------------------------------------
 with tab4:
-    st.subheader("📚 NCERT Flashcards")
-
     mode = st.radio("Depth", ["NCERT", "UPSC"], key="flash_std", horizontal=True)
-
     if topic.strip():
         rel = retrieve_relevant_chunks(chunks, embeddings, topic, mode, 10)
         cards = generate_flashcards(rel, topic, mode, num_q)
