@@ -12,8 +12,7 @@ import numpy as np
 from pypdf import PdfReader
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
-import nltk
-from nltk.tokenize import sent_tokenize
+
 # --------------------------------------------
 # CONFIG
 # --------------------------------------------
@@ -33,8 +32,6 @@ SUBJECT_KEYWORDS = {
 
 SIMILARITY_THRESHOLD_NCERT = 0.35
 SIMILARITY_THRESHOLD_UPSC = 0.45
-
-nltk.download("punkt", quiet=True)
 
 # --------------------------------------------
 # STREAMLIT SETUP
@@ -72,14 +69,12 @@ def download_and_extract():
         except:
             pass
 
-
 def read_pdf(path):
     try:
         reader = PdfReader(path)
         return " ".join(p.extract_text() or "" for p in reader.pages)
     except:
         return ""
-
 
 def clean_text(text):
     text = re.sub(
@@ -90,10 +85,8 @@ def clean_text(text):
     )
     return re.sub(r"\s+", " ", text).strip()
 
-
 def pdf_matches_subject(path, subject):
     return any(k in path.lower() for k in SUBJECT_KEYWORDS[subject])
-
 
 def load_all_texts(subject):
     texts = []
@@ -104,16 +97,13 @@ def load_all_texts(subject):
                 texts.append(t)
     return texts
 
-
 def semantic_chunks(text):
-    sents = re.split(r"(?<=[.])\s+", text)
+    sents = re.split(r"(?<=[.?!])\s+", text)
     return [" ".join(sents[i:i+3]) for i in range(0, len(sents), 3)]
-
 
 def is_conceptual(s):
     skip = ["chapter", "unit", "page", "contents", "figure", "table"]
     return 8 <= len(s.split()) <= 60 and not any(k in s.lower() for k in skip)
-
 
 # --------------------------------------------
 # EMBEDDINGS
@@ -122,19 +112,11 @@ def is_conceptual(s):
 def embed_chunks(chunks):
     return embedder.encode(chunks, convert_to_numpy=True)
 
-
 # --------------------------------------------
 # SAFE RETRIEVAL
 # --------------------------------------------
 def retrieve_relevant_chunks(chunks, embeddings, query, standard="NCERT", top_k=10):
-
-    if (
-        not chunks
-        or embeddings is None
-        or not isinstance(embeddings, np.ndarray)
-        or embeddings.ndim != 2
-        or embeddings.shape[0] == 0
-    ):
+    if not chunks or embeddings is None or embeddings.ndim != 2 or embeddings.shape[0] == 0:
         return []
 
     q_vec = embedder.encode([query], convert_to_numpy=True)
@@ -143,11 +125,7 @@ def retrieve_relevant_chunks(chunks, embeddings, query, standard="NCERT", top_k=
     threshold = SIMILARITY_THRESHOLD_UPSC if standard == "UPSC" else SIMILARITY_THRESHOLD_NCERT
     ranked = sorted(zip(chunks, sims), key=lambda x: x[1], reverse=True)
 
-    return [
-        ch for ch, sc in ranked
-        if sc >= threshold and is_conceptual(ch)
-    ][:top_k]
-
+    return [ch for ch, sc in ranked if sc >= threshold and is_conceptual(ch)][:top_k]
 
 # --------------------------------------------
 # QUESTION GENERATORS
@@ -168,18 +146,15 @@ def generate_subjective(topic, n, standard):
         ]
     return qs[:n]
 
-
 def generate_ncert_mcqs(chunks, topic, n):
     sents = [s for ch in chunks for s in re.split(r"[.;]", ch) if is_conceptual(s)]
     random.shuffle(sents)
-
     mcqs = []
     for s in sents[:n]:
         opts = random.sample(sents, min(4, len(sents)))
         if s not in opts:
             opts[0] = s
         random.shuffle(opts)
-
         mcqs.append({
             "q": f"Which statement best explains {topic}?",
             "options": opts,
@@ -187,59 +162,28 @@ def generate_ncert_mcqs(chunks, topic, n):
         })
     return mcqs
 
-
 def normalize_text(s):
     s = re.sub(r"\b([a-z])\s+([a-z])\b", r"\1\2", s)
     s = re.sub(r"\s+", " ", s)
     return s.strip().capitalize()
 
-
 # --------------------------------------------
-# SIMPLE SUMMARIZER
+# SIMPLE FLASHCARD SUMMARIZER
 # --------------------------------------------
-def simple_summarize(text, max_sentences=5):
-    sentences = re.split(r'(?<=[.!?]) +', text)
-    return ' '.join(sentences[:max_sentences])
-
-
-# --------------------------------------------
-# FLASHCARDS
-# --------------------------------------------
-
-def generate_flashcards(chunks, topic, mode="NCERT", max_cards=1):
-    """
-    Generates summarized flashcards.
-    - Merges multiple relevant chunks into one context per topic.
-    - Summarizes the merged content into a concise flashcard.
-    """
-    if not chunks:
-        return []
-
-    # Merge all conceptual sentences from chunks
-    sentences = []
+def generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
+    cards = []
     for ch in chunks:
-        for s in sent_tokenize(ch):
-            s = s.strip()
-            if is_conceptual(s):
-                sentences.append(normalize_text(s))
-
-    if not sentences:
-        return []
-
-    # Merge all sentences into one paragraph
-    merged_text = " ".join(sentences)
-
-    # Simple summarization: take first few sentences (can be extended with more advanced summarizers)
-    summary_sentences = sent_tokenize(merged_text)[:8]  # pick first 8 sentences
-    summary = " ".join(summary_sentences)
-
-    if mode.upper() == "UPSC":
-        summary += " This concept has constitutional, political, and governance relevance in contemporary India."
-
-    # Return a single flashcard
-    return [{"title": topic.capitalize(), "content": summary.strip()}]
-
-
+        sentences = [normalize_text(s) for s in re.split(r"(?<=[.?!])\s+", ch) if is_conceptual(s)]
+        if not sentences:
+            continue
+        # Take first 2-3 sentences as concise summary
+        summary = " ".join(sentences[:3])
+        if mode.upper() == "UPSC":
+            summary += " This concept has constitutional, political, and governance relevance."
+        cards.append({"title": topic.capitalize(), "content": summary.strip()})
+        if len(cards) >= max_cards:
+            break
+    return cards
 
 # --------------------------------------------
 # SIDEBAR
@@ -307,9 +251,14 @@ with tab3:
                 st.error("❌ Answer not found in NCERT textbooks.")
             else:
                 st.markdown("### 📘 NCERT-based answer:")
-                answer_text = " ".join(re.sub(r'\s+', ' ', r) for r in retrieved)
-                summary = simple_summarize(answer_text, max_sentences=6)
-                st.write(summary)
+                # Take first few sentences of retrieved chunks as answer
+                answer_sentences = []
+                for r in retrieved:
+                    sents = re.split(r"(?<=[.?!])\s+", r)
+                    for s in sents:
+                        if is_conceptual(s):
+                            answer_sentences.append(normalize_text(s))
+                st.write(" ".join(answer_sentences[:6]))
 
 # FLASHCARDS
 with tab4:
