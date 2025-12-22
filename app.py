@@ -306,7 +306,7 @@ with tab3:
         else:
             retrieved = retrieve_relevant_chunks(
                 chunks,
-                chunk_embeddings,
+                embeddings,
                 user_q,
                 standard=chatbot_mode,
                 top_k=6
