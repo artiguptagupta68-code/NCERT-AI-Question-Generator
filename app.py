@@ -1,6 +1,6 @@
 # ============================================
 # NCERT + UPSC Exam-Ready Generator (RAG-based)
-# Streamlit-safe | NLTK-based Summarized Flashcards
+# Streamlit-safe | Summarized Flashcards
 # ============================================
 
 import os, zipfile, re, random
@@ -8,19 +8,11 @@ from pathlib import Path
 import streamlit as st
 import gdown
 import numpy as np
-import nltk
-from nltk.tokenize import sent_tokenize, word_tokenize
-from collections import Counter
 
 from pypdf import PdfReader
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 
-
-try:
-    nltk.data.find("tokenizers/punkt")
-except LookupError:
-    nltk.download("punkt")
 # --------------------------------------------
 # CONFIG
 # --------------------------------------------
@@ -133,7 +125,13 @@ def embed_chunks(chunks):
 # --------------------------------------------
 def retrieve_relevant_chunks(chunks, embeddings, query, standard="NCERT", top_k=10):
 
-    if not chunks or embeddings is None or not isinstance(embeddings, np.ndarray) or embeddings.ndim != 2 or embeddings.shape[0] == 0:
+    if (
+        not chunks
+        or embeddings is None
+        or not isinstance(embeddings, np.ndarray)
+        or embeddings.ndim != 2
+        or embeddings.shape[0] == 0
+    ):
         return []
 
     q_vec = embedder.encode([query], convert_to_numpy=True)
@@ -194,23 +192,11 @@ def normalize_text(s):
 
 
 # --------------------------------------------
-# NLTK-BASED SUMMARIZER FOR FLASHCARDS & CHATBOT
+# SIMPLE SUMMARIZER
 # --------------------------------------------
-def summarize_text(text, max_sentences=3):
-    sentences = sent_tokenize(text)
-    if len(sentences) <= max_sentences:
-        return " ".join(sentences)
-    
-    words = [w.lower() for w in word_tokenize(text) if w.isalpha()]
-    freq = Counter(words)
-    
-    scored = []
-    for s in sentences:
-        score = sum(freq.get(w.lower(), 0) for w in word_tokenize(s) if w.isalpha())
-        scored.append((score, s))
-    
-    top_sents = [s for _, s in sorted(scored, reverse=True)[:max_sentences]]
-    return " ".join(top_sents)
+def simple_summarize(text, max_sentences=5):
+    sentences = re.split(r'(?<=[.!?]) +', text)
+    return ' '.join(sentences[:max_sentences])
 
 
 # --------------------------------------------
@@ -223,7 +209,7 @@ def generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
         if not sentences:
             continue
         paragraph = ". ".join(sentences)
-        summary = summarize_text(paragraph, max_sentences=3)
+        summary = simple_summarize(paragraph, max_sentences=5)
         if mode.upper() == "UPSC":
             summary += " This concept has constitutional, political, and governance relevance in contemporary India."
         cards.append({"title": topic.capitalize(), "content": summary.strip()})
@@ -299,7 +285,7 @@ with tab3:
             else:
                 st.markdown("### 📘 NCERT-based answer:")
                 answer_text = " ".join(re.sub(r'\s+', ' ', r) for r in retrieved)
-                summary = summarize_text(answer_text, max_sentences=5)
+                summary = simple_summarize(answer_text, max_sentences=6)
                 st.write(summary)
 
 # FLASHCARDS
