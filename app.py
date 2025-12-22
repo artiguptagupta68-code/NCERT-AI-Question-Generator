@@ -23,9 +23,9 @@ EXTRACT_DIR = "ncert_extracted"
 SUBJECTS = ["Polity", "Economics", "Sociology", "Psychology", "Business Studies"]
 
 SUBJECT_KEYWORDS = {
-    "Polity": ["polity", "political", "constitution", "civics"],
+    "Polity": ["constitution", "civics", "political"],
     "Economics": ["economics", "economic"],
-    "Sociology": ["sociology", "society"],
+    "Sociology": ["society", "sociology"],
     "Psychology": ["psychology"],
     "Business Studies": ["business", "management"]
 }
@@ -40,7 +40,7 @@ st.set_page_config(page_title="NCERT & UPSC Generator", layout="wide")
 st.title("📘 NCERT & UPSC Exam-Ready Question Generator")
 
 # --------------------------------------------
-# LOAD EMBEDDING MODEL
+# EMBEDDING MODEL
 # --------------------------------------------
 @st.cache_resource
 def load_embedder():
@@ -54,21 +54,9 @@ embedder = load_embedder()
 def download_and_extract():
     if not os.path.exists(ZIP_PATH):
         gdown.download(f"https://drive.google.com/uc?id={FILE_ID}", ZIP_PATH)
-
     os.makedirs(EXTRACT_DIR, exist_ok=True)
-
     with zipfile.ZipFile(ZIP_PATH, "r") as z:
         z.extractall(EXTRACT_DIR)
-
-    for zfile in Path(EXTRACT_DIR).rglob("*.zip"):
-        try:
-            out = zfile.parent / zfile.stem
-            out.mkdir(exist_ok=True)
-            with zipfile.ZipFile(zfile, "r") as inner:
-                inner.extractall(out)
-        except:
-            pass
-
 
 def read_pdf(path):
     try:
@@ -77,15 +65,12 @@ def read_pdf(path):
     except:
         return ""
 
-
 def clean_text(text):
-    text = re.sub(r"(activity|exercise|project|editor|isbn|copyright).*", " ", text, flags=re.I)
+    text = re.sub(r"(activity|exercise|project|isbn|copyright).*", " ", text, flags=re.I)
     return re.sub(r"\s+", " ", text).strip()
-
 
 def pdf_matches_subject(path, subject):
     return any(k in path.lower() for k in SUBJECT_KEYWORDS[subject])
-
 
 def load_all_texts(subject):
     texts = []
@@ -96,37 +81,27 @@ def load_all_texts(subject):
                 texts.append(t)
     return texts
 
-
 def semantic_chunks(text):
     sents = re.split(r"(?<=[.])\s+", text)
     return [" ".join(sents[i:i+3]) for i in range(0, len(sents), 3)]
-
 
 def is_conceptual(s):
     skip = ["chapter", "unit", "page", "contents", "figure", "table"]
     return 8 <= len(s.split()) <= 60 and not any(k in s.lower() for k in skip)
 
-
 @st.cache_data(show_spinner=False)
 def embed_chunks(chunks):
     return embedder.encode(chunks, convert_to_numpy=True)
 
-
 def retrieve_relevant_chunks(chunks, embeddings, query, standard="NCERT", top_k=10):
     q_vec = embedder.encode([query], convert_to_numpy=True)
     sims = cosine_similarity(q_vec, embeddings)[0]
-
     threshold = SIMILARITY_THRESHOLD_UPSC if standard == "UPSC" else SIMILARITY_THRESHOLD_NCERT
-
     ranked = sorted(zip(chunks, sims), key=lambda x: x[1], reverse=True)
-
-    return [
-        ch for ch, sc in ranked
-        if sc >= threshold and is_conceptual(ch)
-    ][:top_k]
+    return [c for c, s in ranked if s >= threshold and is_conceptual(c)][:top_k]
 
 # --------------------------------------------
-# QUESTION GENERATORS (UNCHANGED LOGIC)
+# GENERATORS
 # --------------------------------------------
 def generate_subjective(topic, n, standard):
     if standard == "NCERT":
@@ -144,18 +119,15 @@ def generate_subjective(topic, n, standard):
         ]
     return qs[:n]
 
-
 def generate_ncert_mcqs(chunks, topic, n):
     sents = [s for ch in chunks for s in re.split(r"[.;]", ch) if is_conceptual(s)]
     random.shuffle(sents)
-
     mcqs = []
     for s in sents[:n]:
         opts = random.sample(sents, min(4, len(sents)))
         if s not in opts:
             opts[0] = s
         random.shuffle(opts)
-
         mcqs.append({
             "q": f"Which statement best explains {topic}?",
             "options": opts,
@@ -163,102 +135,46 @@ def generate_ncert_mcqs(chunks, topic, n):
         })
     return mcqs
 
-
-def clean_sentence(s):
-    s = re.sub(r"\b(r\s+e|c\s+i|n\s+a|ar\s+e)\b", "", s)
-    return s.strip().capitalize()
-
-
 def normalize_text(s):
-    s = re.sub(r"\b([a-z])\s+([a-z])\b", r"\1\2", s)  # fix OCR splits
+    s = re.sub(r"\b([a-z])\s+([a-z])\b", r"\1\2", s)
     s = re.sub(r"\s+", " ", s)
     return s.strip().capitalize()
 
-
-def generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
+def generate_flashcards(chunks, topic, mode, max_cards):
     cards = []
-
     for ch in chunks:
-        sentences = re.split(r"[.;]", ch)
-        sentences = [
-            normalize_text(s)
-            for s in sentences
-            if is_conceptual(s) and len(s.split()) >= 7
-        ]
-
-        if len(sentences) < 2:
+        sents = [normalize_text(s) for s in re.split(r"[.;]", ch) if is_conceptual(s)]
+        if len(sents) < 2:
             continue
-
         if mode == "NCERT":
-            paragraph = (
-                f"{sentences[0]}. "
-                f"{sentences[1]}. "
-                f"{sentences[2] if len(sentences) > 2 else ''}"
-            )
-
-        else:  # UPSC MODE
-            paragraph = (
-                f"{sentences[0]}. "
+            para = f"{sents[0]}. {sents[1]}."
+        else:
+            para = (
+                f"{sents[0]}. "
                 f"This idea has constitutional and democratic significance. "
-                f"{sentences[1]}. "
-                f"It is frequently used to interpret rights, governance and state responsibility in India."
+                f"It is frequently used in UPSC answers to interpret governance and rights."
             )
-
-        cards.append({
-            "title": topic.capitalize(),
-            "content": paragraph.strip()
-        })
-
+        cards.append({"title": topic.capitalize(), "content": para})
         if len(cards) >= max_cards:
             break
-
     return cards
 
 # --------------------------------------------
-# TAB 5: Active Learning & Fill-in-the-Blanks
+# ACTIVE LEARNING (NEW)
 # --------------------------------------------
-tab5 = st.tab("📝 Active Learning")
-
-def generate_active_topic_flashcards(chunks, max_cards=5):
-    cards = []
+def infer_topic_from_context(chunks):
+    words = []
     for ch in chunks:
-        sentences = [s.strip() for s in re.split(r"[.;]", ch) if is_conceptual(s)]
-        if len(sentences) < 2:
-            continue
-        
-        # Infer topic from frequent nouns/keywords
-        words = [w.lower() for w in " ".join(sentences).split() if len(w) > 3]
-        topic = max(set(words), key=words.count) if words else "General"
+        words += re.findall(r"\b[A-Z][a-z]{4,}\b", ch)
+    return max(set(words), key=words.count) if words else "Concept"
 
-        paragraph = " ".join(sentences[:3])
-        cards.append({"title": topic.capitalize(), "content": paragraph.strip()})
-
-        if len(cards) >= max_cards:
-            break
-    return cards
-
-def generate_fill_in_blank_flashcards(chunks, max_cards=5):
-    cards = []
-    for ch in chunks:
-        sentences = [s.strip() for s in re.split(r"[.;]", ch) if is_conceptual(s)]
-        if len(sentences) < 2:
-            continue
-
-        paragraph = " ".join(sentences[:3])
-        words = paragraph.split()
-        important_words = [w for w in words if len(w) > 5 and w.isalpha()]
-        num_blanks = max(1, len(important_words)//7)
-        blanks = random.sample(important_words, num_blanks)
-
-        for b in blanks:
-            paragraph = re.sub(r"\b{}\b".format(re.escape(b)), "_____", paragraph, count=1)
-
-        cards.append({"title": "Fill in the blanks", "content": paragraph.strip()})
-
-        if len(cards) >= max_cards:
-            break
-    return cards
-
+def generate_fill_blanks(sentence):
+    words = sentence.split()
+    key_words = [w for w in words if len(w) > 6]
+    if not key_words:
+        return sentence
+    target = random.choice(key_words)
+    return sentence.replace(target, "_" * len(target))
 
 # --------------------------------------------
 # SIDEBAR
@@ -283,33 +199,26 @@ if os.path.exists(EXTRACT_DIR):
 
 embeddings = embed_chunks(chunks) if chunks else np.array([])
 
-st.write(f"📄 PDFs used: {len(texts)}")
-st.write(f"🧩 Chunks created: {len(chunks)}")
-
 # --------------------------------------------
-# TABS
+# TABS (FIXED)
 # --------------------------------------------
-tab1, tab2, tab3, tab4 = st.tabs(
-    ["📝 Subjective", "🧠 MCQs", "💬 Ask NCERT", "🧠 Flashcards"]
+tab1, tab2, tab3, tab4, tab5 = st.tabs(
+    ["📝 Subjective", "🧠 MCQs", "💬 Ask NCERT", "🧠 Flashcards", "📝 Active Learning"]
 )
 
-# --------------------------------------------
 # SUBJECTIVE
-# --------------------------------------------
 with tab1:
-    std1 = st.radio("Standard", ["NCERT", "UPSC"], key="sub_std", horizontal=True)
+    std = st.radio("Standard", ["NCERT", "UPSC"], key="sub_std", horizontal=True)
     if st.button("Generate Subjective"):
-        rel = retrieve_relevant_chunks(chunks, embeddings, topic, std1)
-        for i, q in enumerate(generate_subjective(topic, min(num_q, len(rel)), std1), 1):
+        rel = retrieve_relevant_chunks(chunks, embeddings, topic, std)
+        for i, q in enumerate(generate_subjective(topic, min(num_q, len(rel)), std), 1):
             st.write(f"{i}. {q}")
 
-# --------------------------------------------
 # MCQs
-# --------------------------------------------
 with tab2:
-    std2 = st.radio("Standard", ["NCERT", "UPSC"], key="mcq_std", horizontal=True)
+    std = st.radio("Standard", ["NCERT", "UPSC"], key="mcq_std", horizontal=True)
     if st.button("Generate MCQs"):
-        rel = retrieve_relevant_chunks(chunks, embeddings, topic, std2)
+        rel = retrieve_relevant_chunks(chunks, embeddings, topic, std)
         for i, m in enumerate(generate_ncert_mcqs(rel, topic, num_q), 1):
             st.write(f"**Q{i}. {m['q']}**")
             for j, o in enumerate(m["options"]):
@@ -317,74 +226,33 @@ with tab2:
             st.write(f"✅ Answer: {chr(97+m['answer'])}")
             st.write("---")
 
-# --------------------------------------------
 # CHATBOT
-# --------------------------------------------
 with tab3:
-    std3 = st.radio("Answer Style", ["NCERT", "UPSC"], key="chat_std", horizontal=True)
+    std = st.radio("Answer Style", ["NCERT", "UPSC"], key="chat_std", horizontal=True)
     q = st.text_input("Ask strictly from NCERT")
     if st.button("Ask"):
-        rel = retrieve_relevant_chunks(chunks, embeddings, q, std3, 6)
-        if not rel:
-            st.error("❌ Not found in NCERT")
-        else:
-            st.markdown("### 📘 NCERT-based answer")
-            for r in rel:
-                st.write(r)
+        rel = retrieve_relevant_chunks(chunks, embeddings, q, std, 6)
+        for r in rel:
+            st.write(r)
 
+# FLASHCARDS
 with tab4:
-    st.subheader("📚 NCERT Flashcards (Concept Revision)")
+    std = st.radio("Flashcard Depth", ["NCERT", "UPSC"], key="flash_std", horizontal=True)
+    rel = retrieve_relevant_chunks(chunks, embeddings, topic, std, 10)
+    for i, c in enumerate(generate_flashcards(rel, topic, std, num_q), 1):
+        st.markdown(f"### 📌 Flashcard {i}: {c['title']}")
+        st.write(c["content"])
 
-    flashcard_mode = st.radio(
-        "Flashcard Depth",
-        ["NCERT", "UPSC"],
-        horizontal=True,
-        key="flashcard_depth"
-    )
-
-    if not topic.strip():
-        st.info("Enter a topic above to generate flashcards.")
-    else:
-        retrieved = retrieve_relevant_chunks(
-            chunks,
-            embeddings,
-            topic,
-            standard=flashcard_mode,
-            top_k=10
-        )
-
-        if not retrieved:
-            st.warning("❌ No NCERT content found.")
-        else:
-            cards = generate_flashcards(
-                retrieved,
-                topic,
-                mode=flashcard_mode,
-                max_cards=num_q
-            )
-
-            for i, card in enumerate(cards, 1):
-                st.markdown(f"### 📌 Flashcard {i}: {card['title']}")
-                st.write(card["content"])
-
-
-
+# ACTIVE LEARNING
 with tab5:
-    st.subheader("Active Learning Flashcards (Auto Topic)")
-    if not chunks:
-        st.warning("❌ No NCERT content loaded.")
-    else:
-        active_cards = generate_active_topic_flashcards(chunks, max_cards=num_q)
-        for i, card in enumerate(active_cards, 1):
-            st.markdown(f"### 📌 Flashcard {i}: {card['title']}")
-            st.write(card["content"])
+    st.subheader("Active Learning")
+    rel = retrieve_relevant_chunks(chunks, embeddings, topic, "NCERT", 5)
 
-    st.subheader("Fill-in-the-Blanks Flashcards")
-    if not chunks:
-        st.warning("❌ No NCERT content loaded.")
-    else:
-        fib_cards = generate_fill_in_blank_flashcards(chunks, max_cards=num_q)
-        for i, card in enumerate(fib_cards, 1):
-            st.markdown(f"### 📌 Flashcard {i}: {card['title']}")
-            st.write(card["content"])
+    if rel:
+        inferred = infer_topic_from_context(rel)
+        st.markdown(f"**Inferred Topic:** {inferred}")
 
+        st.markdown("### Fill in the blanks")
+        for ch in rel:
+            sent = normalize_text(ch)
+            st.write(generate_fill_blanks(sent))
