@@ -108,8 +108,13 @@ def semantic_chunks(text):
 
 
 def is_conceptual(s):
-    skip = ["chapter", "unit", "page", "contents", "figure", "table"]
-    return 8 <= len(s.split()) <= 60 and not any(k in s.lower() for k in skip)
+    skip = [
+        "chapter", "unit", "page", "contents", "figure", "table",
+        "all rights reserved", "this publication", "isbn", "publisher",
+        "phone", "email", "address", "office"
+    ]
+    s = s.lower()
+    return 8 <= len(s.split()) <= 60 and not any(k in s for k in skip)
 
 
 # --------------------------------------------
@@ -223,24 +228,23 @@ def generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
     return cards
 
 
-def generate_chatbot_answer(chunks, question, standard="NCERT"):
+ddef generate_chatbot_answer(chunks, question, standard="NCERT"):
     if not chunks:
         return None
 
     sentences = []
     for ch in chunks:
         for s in re.split(r"[.;]", ch):
-            if is_conceptual(s):
-                sentences.append(normalize_text(s))
+            s = normalize_text(s)
+            if is_conceptual(s) and len(s.split()) > 5:
+                sentences.append(s)
 
     if not sentences:
         return None
 
-    seen, clean = set(), []
-    for s in sentences:
-        if s not in seen:
-            seen.add(s)
-            clean.append(s)
+    # Remove duplicates
+    seen = set()
+    clean = [s for s in sentences if not (s in seen or seen.add(s))]
 
     if standard == "NCERT":
         return " ".join(clean[:6])
