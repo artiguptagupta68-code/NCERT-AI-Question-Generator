@@ -192,36 +192,44 @@ def normalize_text(s):
     return s.strip().capitalize()
 
 
+from gensim.summarization import summarize
+
 def generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
+    """
+    Generates concise flashcards from conceptual chunks.
+    Each flashcard represents one context in summarized form.
+    """
     cards = []
+    count = 0
+
     for ch in chunks:
-        sentences = [
-            normalize_text(s)
-            for s in re.split(r"[.;]", ch)
-            if is_conceptual(s)
-        ]
-        if len(sentences) < 2:
+        # Only keep conceptual sentences
+        sentences = [normalize_text(s) for s in re.split(r"[.;]", ch) if is_conceptual(s)]
+        if not sentences:
             continue
 
-        if mode == "NCERT":
-            paragraph = " ".join(sentences[:3])
-        else:
-            paragraph = (
-                f"{sentences[0]} "
-                f"This concept has constitutional and governance relevance. "
-                f"{sentences[1]} "
-                f"It is frequently discussed in UPSC examinations."
-            )
+        # Join sentences and summarize
+        text_block = " ".join(sentences)
+
+        # Summarize with gensim (fallback to first 2 sentences if too short)
+        try:
+            summary = summarize(text_block, word_count=40)
+            if not summary:
+                summary = " ".join(sentences[:2])
+        except:
+            summary = " ".join(sentences[:2])
 
         cards.append({
             "title": topic.capitalize(),
-            "content": paragraph
+            "content": summary
         })
 
-        if len(cards) >= max_cards:
+        count += 1
+        if count >= max_cards:
             break
 
     return cards
+
 
 
 
