@@ -12,7 +12,8 @@ import numpy as np
 from pypdf import PdfReader
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
-
+import nltk
+from nltk.tokenize import sent_tokenize
 # --------------------------------------------
 # CONFIG
 # --------------------------------------------
@@ -32,6 +33,8 @@ SUBJECT_KEYWORDS = {
 
 SIMILARITY_THRESHOLD_NCERT = 0.35
 SIMILARITY_THRESHOLD_UPSC = 0.45
+
+nltk.download("punkt", quiet=True)
 
 # --------------------------------------------
 # STREAMLIT SETUP
@@ -202,20 +205,41 @@ def simple_summarize(text, max_sentences=5):
 # --------------------------------------------
 # FLASHCARDS
 # --------------------------------------------
-def generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
-    cards = []
+)
+
+def generate_flashcards(chunks, topic, mode="NCERT", max_cards=1):
+    """
+    Generates summarized flashcards.
+    - Merges multiple relevant chunks into one context per topic.
+    - Summarizes the merged content into a concise flashcard.
+    """
+    if not chunks:
+        return []
+
+    # Merge all conceptual sentences from chunks
+    sentences = []
     for ch in chunks:
-        sentences = [normalize_text(s) for s in re.split(r"[.;]", ch) if is_conceptual(s)]
-        if not sentences:
-            continue
-        paragraph = ". ".join(sentences)
-        summary = simple_summarize(paragraph, max_sentences=5)
-        if mode.upper() == "UPSC":
-            summary += " This concept has constitutional, political, and governance relevance in contemporary India."
-        cards.append({"title": topic.capitalize(), "content": summary.strip()})
-        if len(cards) >= max_cards:
-            break
-    return cards
+        for s in sent_tokenize(ch):
+            s = s.strip()
+            if is_conceptual(s):
+                sentences.append(normalize_text(s))
+
+    if not sentences:
+        return []
+
+    # Merge all sentences into one paragraph
+    merged_text = " ".join(sentences)
+
+    # Simple summarization: take first few sentences (can be extended with more advanced summarizers)
+    summary_sentences = sent_tokenize(merged_text)[:8]  # pick first 8 sentences
+    summary = " ".join(summary_sentences)
+
+    if mode.upper() == "UPSC":
+        summary += " This concept has constitutional, political, and governance relevance in contemporary India."
+
+    # Return a single flashcard
+    return [{"title": topic.capitalize(), "content": summary.strip()}]
+
 
 
 # --------------------------------------------
