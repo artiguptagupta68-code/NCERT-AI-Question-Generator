@@ -198,63 +198,93 @@ def estimate_flashcards(chunks, max_sentences_per_card=6):
         num_cards += 1
     return num_cards
 
-def generate_summarized_flashcard(chunks, topic):
+def generate_flashcards(chunks, topic, mode="NCERT"):
     """
-    Generates a single summarized flashcard for a topic:
-    - Combines all chunks
-    - Filters out irrelevant text
-    - Produces concise, student-friendly flashcard
+    Generates:
+    1. Multiple mini flashcards for each chunk
+    2. One single summarized flashcard for the topic
     """
     if not chunks:
-        return None
+        return [], None
 
-    # Combine all chunks into one text
-    combined_text = " ".join(chunks)
-    
-    # Split into sentences
+    mini_cards = []
+    all_text = []
+
+    for i, ch in enumerate(chunks):
+        # Split chunk into sentences
+        sentences = re.split(r'(?<=[.?!])\s+', ch)
+        # Filter meaningful sentences
+        meaningful = [s.strip() for s in sentences if is_useful_sentence(s)]
+        if not meaningful:
+            continue
+        
+        # Concept Overview: first meaningful sentence
+        concept = meaningful[0]
+        # Explanation: next 5-6 sentences
+        explanation = " ".join(meaningful[1:6]) if len(meaningful) > 1 else concept
+        # Classification / Types
+        classification = "Key concepts, types, and applications relevant to the topic."
+        # Conclusion
+        conclusion = "This concept is important for understanding the subject in depth."
+        # Points to remember: first 3-5 short sentences
+        points = []
+        for s in meaningful[1:8]:
+            bullet = " ".join(s.split()[:20]) + ("..." if len(s.split()) > 20 else "")
+            points.append(bullet)
+            if len(points) >= 5:
+                break
+        
+        mini_cards.append({
+            "title": f"{topic.capitalize()} - Concept {i+1}",
+            "content": (
+                f"Concept Overview: {concept}\n\n"
+                f"Explanation: {explanation}\n\n"
+                f"Classification / Types: {classification}\n\n"
+                f"Conclusion: {conclusion}\n\n"
+                f"Points to Remember:\n- " + "\n- ".join(points)
+            )
+        })
+        all_text.append(" ".join(meaningful))
+
+    # Generate summarized flashcard from all chunks
+    combined_text = " ".join(all_text)
     sentences = re.split(r'(?<=[.?!])\s+', combined_text)
+    meaningful_sents = [s for s in sentences if is_useful_sentence(s)]
     
-    # Filter out irrelevant/admin text
-    skip_keywords = ["phone", "fax", "isbn", "copyright", "page", "address", 
-                     "reprint", "office", "publication division", "price", "pd", "bs"]
-    meaningful_sents = [s.strip() for s in sentences if all(k not in s.lower() for k in skip_keywords) and len(s.split()) > 5]
-
     if not meaningful_sents:
-        return None
+        summarized_card = None
+    else:
+        # Concept Overview: first meaningful sentence
+        concept_overview = meaningful_sents[0]
+        # Explanation: combine next 10 meaningful sentences
+        explanation = " ".join(meaningful_sents[1:11]) if len(meaningful_sents) > 1 else concept_overview
+        # Classification / Types
+        classification = "This topic includes key concepts, types, applications, and practical relevance."
+        # Conclusion
+        conclusion = f"Overall, '{topic.capitalize()}' is important for understanding the subject and its real-world implications."
+        if mode.upper() == "UPSC":
+            conclusion += " It is essential for exam preparation and policy understanding."
+        # Points to remember: first 5 bullets
+        points_to_remember = []
+        for s in meaningful_sents[1:15]:
+            bullet = " ".join(s.split()[:20]) + ("..." if len(s.split()) > 20 else "")
+            points_to_remember.append(bullet)
+            if len(points_to_remember) >= 5:
+                break
+        
+        summarized_card = {
+            "title": f"{topic.capitalize()} - Summarized Flashcard",
+            "content": (
+                f"Concept Overview: {concept_overview}\n\n"
+                f"Explanation: {explanation}\n\n"
+                f"Classification / Types: {classification}\n\n"
+                f"Conclusion: {conclusion}\n\n"
+                f"Points to Remember:\n- " + "\n- ".join(points_to_remember)
+            )
+        }
 
-    # Concept Overview: first meaningful sentence
-    concept_overview = meaningful_sents[0]
+    return mini_cards, summarized_card
 
-    # Explanation: next 5-10 meaningful sentences combined
-    explanation = " ".join(meaningful_sents[1:10]) if len(meaningful_sents) > 1 else concept_overview
-
-    # Classification / Types (generic template)
-    classification = "These ideas relate to the topic's key concepts, applications, and practical relevance."
-
-    # Conclusion
-    conclusion = "Overall, this concept is essential for understanding the subject and its practical implications."
-
-    # Points to Remember: extract 3-5 concise bullets
-    points_to_remember = []
-    for s in meaningful_sents[1:15]:
-        bullet = " ".join(s.split()[:20]) + ("..." if len(s.split()) > 20 else "")
-        points_to_remember.append(bullet)
-        if len(points_to_remember) >= 5:
-            break
-
-    # Construct the final summarized flashcard
-    flashcard = {
-        "title": f"{topic.capitalize()} - Summarized Flashcard",
-        "content": (
-            f"Concept Overview: {concept_overview}\n\n"
-            f"Explanation: {explanation}\n\n"
-            f"Classification / Types: {classification}\n\n"
-            f"Conclusion: {conclusion}\n\n"
-            f"Points to Remember:\n- " + "\n- ".join(points_to_remember)
-        )
-    }
-
-    return flashcard
 
 
 
@@ -336,16 +366,18 @@ with tab3:
 
 # FLASHCARDS
 with tab4:
-    mode = st.radio("Depth", ["NCERT", "UPSC"], key="flash_std", horizontal=True)
+    mode = st.radio("Level", ["NCERT", "UPSC"], key="flash_std", horizontal=True)
     if topic.strip():
-        # Retrieve relevant chunks for the topic
-        relevant_chunks = retrieve_relevant_chunks(chunks, embeddings, topic, standard=mode, top_k=20)
+        rel_chunks = retrieve_relevant_chunks(chunks, embeddings, topic, standard=mode, top_k=20)
         
-        # Generate **single summarized flashcard**
-        summarized_card = generate_summarized_flashcard(relevant_chunks, topic)
+        # Generate detailed flashcards
+        mini_cards, summarized_card = generate_detailed_flashcards(rel_chunks, topic, mode)
         
+        
+
+        # Show only summarized flashcard
         if summarized_card:
-            st.markdown(f"### 📌 Flashcard: {summarized_card['title']}")
+            st.markdown(f"### 📌 {summarized_card['title']}")
             st.write(summarized_card["content"])
         else:
             st.error("❌ Not enough content to generate a summarized flashcard.")
