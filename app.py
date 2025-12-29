@@ -171,7 +171,7 @@ def generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
     cards = []
 
     for ch in chunks:
-        # Clean and split sentences
+        # Clean and split into meaningful sentences
         sentences = [
             normalize_text(s)
             for s in re.split(r"(?<=[.?!])\s+", ch)
@@ -181,39 +181,41 @@ def generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
         if len(sentences) < 3:
             continue
 
-        # ---- LOGICAL STRUCTURE ----
-        intro = sentences[0]  # What is it
-        classification = sentences[1]  # Types / nature / scope
-        explanation = " ".join(sentences[2:4]) if len(sentences) > 3 else sentences[-1]
+        # ---- STRUCTURED LOGIC ----
+        intro = sentences[0]
 
-        # Build structured content
-        content = (
-            f"{intro} "
-            f"This concept can be understood through its key features and classifications. "
-            f"{classification} "
-            f"{explanation} "
-        )
+        classification = ""
+        for s in sentences[1:]:
+            if any(k in s.lower() for k in ["type", "form", "kind", "classified", "include"]):
+                classification = s
+                break
 
-        # Add analytical conclusion
+        explanation = " ".join(sentences[1:3])
+
+        conclusion = sentences[-1]
+
+        # UPSC enrichment
         if mode.upper() == "UPSC":
-            content += (
-                "Overall, this concept plays an important role in constitutional governance, "
-                "democratic functioning, and the protection of rights."
-            )
-        else:
-            content += (
-                "Overall, it helps in understanding how constitutional principles guide governance and society."
-            )
+            conclusion += " This has constitutional, political and governance relevance."
+
+        # Final formatted content
+        content = (
+            f"**Concept Overview:** {intro}\n\n"
+            f"**Classification / Types:** {classification if classification else 'The concept has multiple dimensions based on context and application.'}\n\n"
+            f"**Explanation:** {explanation}\n\n"
+            f"**Conclusion:** {conclusion}"
+        )
 
         cards.append({
             "title": topic.capitalize(),
-            "content": content.strip()
+            "content": content
         })
 
         if len(cards) >= max_cards:
             break
 
     return cards
+
 
 
 
