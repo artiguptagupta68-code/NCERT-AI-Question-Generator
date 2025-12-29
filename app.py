@@ -200,61 +200,55 @@ def estimate_flashcards(chunks, max_sentences_per_card=6):
 
 def generate_flashcard(chunks, topic, mode="NCERT"):
     """
-    Generates a single high-quality flashcard for a topic by:
-    1. Combining all relevant chunks
-    2. Filtering only conceptual sentences
-    3. Summarizing the content
-    4. Structuring flashcard with:
-       - Concept Overview
-       - Explanation
-       - Classification / Types
-       - Conclusion
-       - Points to Remember
+    Generate a single high-quality summarized flashcard for a topic.
+    Combines all relevant text, filters conceptual content, summarizes it,
+    and formats it with overview, explanation, classification, conclusion, and points to remember.
     """
     if not chunks:
         return []
 
-    # Combine all chunks
+    # Combine all chunks into one text
     all_text = " ".join(chunks)
 
-    # Split into sentences
+    # Remove excessive newlines, multiple spaces
+    all_text = re.sub(r'\s+', ' ', all_text).strip()
+
+    # Split into sentences (naive regex splitter)
     sentences = re.split(r'(?<=[.?!])\s+', all_text)
 
-    # Filter only conceptual NCERT-style sentences
-    def is_conceptual_sentence(s):
-        s = s.lower()
-        skip_keywords = [
-            "phone", "fax", "isbn", "copyright", "page", "address",
-            "reprint", "pd", "bs", "exercise", "activity"
-        ]
-        return all(k not in s for k in skip_keywords) and len(s.split()) > 5
+    # Filter: keep meaningful sentences
+    def is_meaningful(s):
+        skip_keywords = ["phone", "fax", "isbn", "copyright", "page", "address",
+                         "reprint", "pd", "bs", "exercise", "activity"]
+        return all(k not in s.lower() for k in skip_keywords) and len(s.split()) > 5
 
-    sentences = [s.strip() for s in sentences if is_conceptual_sentence(s)]
+    meaningful_sentences = [s.strip() for s in sentences if is_meaningful(s)]
 
-    if not sentences:
+    if not meaningful_sentences:
         return []
 
     # Concept Overview: first meaningful sentence
-    concept_overview = sentences[0]
+    concept_overview = meaningful_sentences[0]
 
-    # Explanation: next 10 meaningful sentences
-    explanation = " ".join(sentences[1:11]) if len(sentences) > 1 else concept_overview
+    # Explanation: combine next 10 sentences (or less if fewer exist)
+    explanation = " ".join(meaningful_sentences[1:11]) if len(meaningful_sentences) > 1 else concept_overview
 
-    # Classification / Types: can be adjusted per topic
+    # Classification / Types: generic placeholder
     classification = "These ideas relate to key concepts, constitutional principles, and practical applications."
 
-    # Conclusion: general importance
+    # Conclusion: generic placeholder
     conclusion = "Overall, this concept is essential for understanding the topic and its practical relevance."
 
-    # Points to Remember: pick 5 concise sentences
+    # Points to Remember: top 5 short sentences from meaningful_sentences
     points_to_remember = []
-    for s in sentences[1:15]:
+    for s in meaningful_sentences[1:15]:
         words = s.split()
         bullet = " ".join(words[:25]) + ("..." if len(words) > 25 else "")
         points_to_remember.append(bullet)
         if len(points_to_remember) >= 5:
             break
 
+    # Construct final flashcard
     card = {
         "title": f"{topic.capitalize()} - Summarized Flashcard",
         "content": (
@@ -350,18 +344,17 @@ with tab3:
 
 # FLASHCARDS
 with tab4:
-    mode = st.radio("Level", ["NCERT", "UPSC"], key="flash_std", horizontal=True)
+    mode = st.radio("Depth", ["NCERT", "UPSC"], key="flash_std", horizontal=True)
     if topic.strip():
-        rel_chunks = retrieve_relevant_chunks(chunks, embeddings, topic, standard=mode, top_k=20)
+        # Retrieve relevant chunks
+        rel = retrieve_relevant_chunks(chunks, embeddings, topic, mode, top_k=10)
         
-        # Generate detailed flashcards
-        mini_cards, summarized_card = generate_detailed_flashcards(rel_chunks, topic, mode)
+        # Generate **one summarized flashcard**
+        cards = generate_flashcard(rel, topic, mode)
         
-        
-
-        # Show only summarized flashcard
-        if summarized_card:
-            st.markdown(f"### 📌 {summarized_card['title']}")
-            st.write(summarized_card["content"])
+        if cards:
+            c = cards[0]
+            st.markdown(f"### 📌 {c['title']}")
+            st.write(c["content"])
         else:
-            st.error("❌ Not enough content to generate a summarized flashcard.")
+            st.warning("No relevant content found to generate flashcard.")
