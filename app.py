@@ -198,92 +198,76 @@ def estimate_flashcards(chunks, max_sentences_per_card=6):
         num_cards += 1
     return num_cards
 
-def generate_flashcards(chunks, topic, mode="NCERT"):
+def generate_flashcard(chunks, topic, mode="NCERT"):
     """
-    Generates:
-    1. Multiple mini flashcards for each chunk
-    2. One single summarized flashcard for the topic
+    Generates a single high-quality flashcard for a topic by:
+    1. Combining all relevant chunks
+    2. Filtering only conceptual sentences
+    3. Summarizing the content
+    4. Structuring flashcard with:
+       - Concept Overview
+       - Explanation
+       - Classification / Types
+       - Conclusion
+       - Points to Remember
     """
     if not chunks:
-        return [], None
+        return []
 
-    mini_cards = []
-    all_text = []
+    # Combine all chunks
+    all_text = " ".join(chunks)
 
-    for i, ch in enumerate(chunks):
-        # Split chunk into sentences
-        sentences = re.split(r'(?<=[.?!])\s+', ch)
-        # Filter meaningful sentences
-        meaningful = [s.strip() for s in sentences if is_useful_sentence(s)]
-        if not meaningful:
-            continue
-        
-        # Concept Overview: first meaningful sentence
-        concept = meaningful[0]
-        # Explanation: next 5-6 sentences
-        explanation = " ".join(meaningful[1:6]) if len(meaningful) > 1 else concept
-        # Classification / Types
-        classification = "Key concepts, types, and applications relevant to the topic."
-        # Conclusion
-        conclusion = "This concept is important for understanding the subject in depth."
-        # Points to remember: first 3-5 short sentences
-        points = []
-        for s in meaningful[1:8]:
-            bullet = " ".join(s.split()[:20]) + ("..." if len(s.split()) > 20 else "")
-            points.append(bullet)
-            if len(points) >= 5:
-                break
-        
-        mini_cards.append({
-            "title": f"{topic.capitalize()} - Concept {i+1}",
-            "content": (
-                f"Concept Overview: {concept}\n\n"
-                f"Explanation: {explanation}\n\n"
-                f"Classification / Types: {classification}\n\n"
-                f"Conclusion: {conclusion}\n\n"
-                f"Points to Remember:\n- " + "\n- ".join(points)
-            )
-        })
-        all_text.append(" ".join(meaningful))
+    # Split into sentences
+    sentences = re.split(r'(?<=[.?!])\s+', all_text)
 
-    # Generate summarized flashcard from all chunks
-    combined_text = " ".join(all_text)
-    sentences = re.split(r'(?<=[.?!])\s+', combined_text)
-    meaningful_sents = [s for s in sentences if is_useful_sentence(s)]
-    
-    if not meaningful_sents:
-        summarized_card = None
-    else:
-        # Concept Overview: first meaningful sentence
-        concept_overview = meaningful_sents[0]
-        # Explanation: combine next 10 meaningful sentences
-        explanation = " ".join(meaningful_sents[1:11]) if len(meaningful_sents) > 1 else concept_overview
-        # Classification / Types
-        classification = "This topic includes key concepts, types, applications, and practical relevance."
-        # Conclusion
-        conclusion = f"Overall, '{topic.capitalize()}' is important for understanding the subject and its real-world implications."
-        if mode.upper() == "UPSC":
-            conclusion += " It is essential for exam preparation and policy understanding."
-        # Points to remember: first 5 bullets
-        points_to_remember = []
-        for s in meaningful_sents[1:15]:
-            bullet = " ".join(s.split()[:20]) + ("..." if len(s.split()) > 20 else "")
-            points_to_remember.append(bullet)
-            if len(points_to_remember) >= 5:
-                break
-        
-        summarized_card = {
-            "title": f"{topic.capitalize()} - Summarized Flashcard",
-            "content": (
-                f"Concept Overview: {concept_overview}\n\n"
-                f"Explanation: {explanation}\n\n"
-                f"Classification / Types: {classification}\n\n"
-                f"Conclusion: {conclusion}\n\n"
-                f"Points to Remember:\n- " + "\n- ".join(points_to_remember)
-            )
-        }
+    # Filter only conceptual NCERT-style sentences
+    def is_conceptual_sentence(s):
+        s = s.lower()
+        skip_keywords = [
+            "phone", "fax", "isbn", "copyright", "page", "address",
+            "reprint", "pd", "bs", "exercise", "activity"
+        ]
+        return all(k not in s for k in skip_keywords) and len(s.split()) > 5
 
-    return mini_cards, summarized_card
+    sentences = [s.strip() for s in sentences if is_conceptual_sentence(s)]
+
+    if not sentences:
+        return []
+
+    # Concept Overview: first meaningful sentence
+    concept_overview = sentences[0]
+
+    # Explanation: next 10 meaningful sentences
+    explanation = " ".join(sentences[1:11]) if len(sentences) > 1 else concept_overview
+
+    # Classification / Types: can be adjusted per topic
+    classification = "These ideas relate to key concepts, constitutional principles, and practical applications."
+
+    # Conclusion: general importance
+    conclusion = "Overall, this concept is essential for understanding the topic and its practical relevance."
+
+    # Points to Remember: pick 5 concise sentences
+    points_to_remember = []
+    for s in sentences[1:15]:
+        words = s.split()
+        bullet = " ".join(words[:25]) + ("..." if len(words) > 25 else "")
+        points_to_remember.append(bullet)
+        if len(points_to_remember) >= 5:
+            break
+
+    card = {
+        "title": f"{topic.capitalize()} - Summarized Flashcard",
+        "content": (
+            f"Concept Overview: {concept_overview}\n\n"
+            f"Explanation: {explanation}\n\n"
+            f"Classification / Types: {classification}\n\n"
+            f"Conclusion: {conclusion}\n\n"
+            f"Points to Remember:\n- " + "\n- ".join(points_to_remember)
+        )
+    }
+
+    return [card]
+
 
 
 
