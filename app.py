@@ -299,7 +299,7 @@ with tab4:
     mode = st.radio("Depth", ["NCERT", "UPSC"], key="flash_std", horizontal=True)
     if topic.strip():
         rel = retrieve_relevant_chunks(chunks, embeddings, topic, mode, 10)
-        cards = generate_flashcards(rel, topic, mode, num_q)
+        cards = generate_flashcards(chunks, topic, max_cards=5)
         for i, c in enumerate(cards, 1):
             st.markdown(f"### 📌 Flashcard {i}: {c['title']}")
             st.write(c["content"])
