@@ -167,76 +167,12 @@ def normalize_text(s):
     s = re.sub(r"\s+", " ", s)
     return s.strip().capitalize()
 
-import re
-
-# Keywords that indicate meaningful academic content
-CONCEPT_KEYWORDS = [
-    "right", "rights", "constitution", "democracy", "freedom", "equality",
-    "justice", "citizen", "state", "law", "education", "society", "governance"
-]
-
-# Noise words to ignore
-NOISE_KEYWORDS = [
-    "printed", "reprint", "price", "phone", "edition", "copyright",
-    "publisher", "publication", "isbn", "press", "campus", "road"
-]
-
-
-def is_valid_content(text):
-    text_lower = text.lower()
-    if any(noise in text_lower for noise in NOISE_KEYWORDS):
-        return False
-    return any(word in text_lower for word in CONCEPT_KEYWORDS)
-
-
-def normalize_text(text):
-    return re.sub(r"\s+", " ", text.strip())
-
-
-def generate_flashcards(chunks, topic, max_cards=5):
+ef generate_flashcards(chunks, n):
     cards = []
-
-    for chunk in chunks:
-        text = normalize_text(chunk)
-
-        if not is_valid_content(text):
-            continue
-
-        sentences = re.split(r"(?<=[.!?])\s+", text)
-        if len(sentences) < 2:
-            continue
-
-        concept = sentences[0]
-
-        explanation = " ".join(sentences[1:4])
-
-        classification = (
-            "These ideas relate to constitutional values, democratic governance, "
-            "and social responsibility."
-        )
-
-        conclusion = (
-            "Overall, this concept strengthens democratic principles and promotes "
-            "justice, equality, and responsible citizenship."
-        )
-
-        card = {
-            "title": topic.capitalize(),
-            "content": (
-                f"Concept Overview: {concept}\n\n"
-                f"Classification / Types: {classification}\n\n"
-                f"Explanation: {explanation}\n\n"
-                f"Conclusion: {conclusion}"
-            )
-        }
-
-        cards.append(card)
-
-        if len(cards) >= max_cards:
-            break
-
+    for ch in chunks[:n]:
+        bullets = [b.strip() for b in re.split(r"[.;]", ch) if is_conceptual(b)]
+        cards.append(bullets[:5])
     return cards
-
 
 
 
