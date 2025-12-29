@@ -167,47 +167,49 @@ def normalize_text(s):
     s = re.sub(r"\s+", " ", s)
     return s.strip().capitalize()
 
-def generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
+import re
+
+def normalize_text(text):
+    return re.sub(r"\s+", " ", text.strip())
+
+def generate_flashcards(chunks, topic, max_cards=5):
     cards = []
 
     for ch in chunks:
-        # Clean and split sentences
-        sentences = [
-            normalize_text(s)
-            for s in re.split(r"(?<=[.?!])\s+", ch)
-            if is_conceptual(s)
-        ]
+        text = normalize_text(ch)
 
-        if not sentences:
+        # Split into sentences
+        sentences = re.split(r"(?<=[.!?])\s+", text)
+
+        if len(sentences) < 2:
             continue
 
-        # -------- STRUCTURE LOGIC --------
+        # ---- LOGIC SECTIONS ----
+
         concept = sentences[0]
 
         classification = (
-            "This concept can be understood through its legal, political, and social dimensions."
+            "These ideas can be understood through legal, political, and social dimensions."
         )
 
-        explanation = " ".join(sentences[1:3]) if len(sentences) > 1 else sentences[0]
+        explanation = " ".join(sentences[1:4])
 
         conclusion = (
-            "Overall, this concept plays an important role in ensuring justice, equality, and democratic governance."
+            "Thus, these principles ensure justice, equality, and democratic governance "
+            "by adapting to changing social and political needs."
         )
 
-        if mode.upper() == "UPSC":
-            conclusion += " It has significant constitutional and administrative relevance."
-
-        content = (
-            f"Concept Overview: {concept}\n\n"
-            f"Classification / Types: {classification}\n\n"
-            f"Explanation: {explanation}\n\n"
-            f"Conclusion: {conclusion}"
-        )
-
-        cards.append({
+        flashcard = {
             "title": topic.capitalize(),
-            "content": content
-        })
+            "content": (
+                f"Concept Overview: {concept}\n\n"
+                f"Classification / Types: {classification}\n\n"
+                f"Explanation: {explanation}\n\n"
+                f"Conclusion: {conclusion}"
+            )
+        }
+
+        cards.append(flashcard)
 
         if len(cards) >= max_cards:
             break
