@@ -168,6 +168,14 @@ def normalize_text(s):
     return s.strip().capitalize()
 
 def generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
+    """
+    Generates structured flashcards with:
+    - Concept Overview
+    - Classification
+    - Explanation
+    - Conclusion
+    """
+
     cards = []
 
     for ch in chunks:
@@ -181,29 +189,28 @@ def generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
         if len(sentences) < 3:
             continue
 
-        # ---- STRUCTURED LOGIC ----
-        intro = sentences[0]
+        # ---- STRUCTURE LOGIC ----
+        concept = sentences[0]
 
-        classification = ""
-        for s in sentences[1:]:
-            if any(k in s.lower() for k in ["type", "form", "kind", "classified", "include"]):
-                classification = s
-                break
+        classification = (
+            "The concept can be understood through different dimensions such as legal, political, and social aspects."
+        )
 
-        explanation = " ".join(sentences[1:3])
+        explanation = " ".join(sentences[1:4])
 
-        conclusion = sentences[-1]
+        conclusion = (
+            "Thus, this concept plays a crucial role in shaping democratic values, "
+            "ensuring justice, equality, and good governance."
+        )
 
-        # UPSC enrichment
         if mode.upper() == "UPSC":
-            conclusion += " This has constitutional, political and governance relevance."
+            conclusion += " It has strong constitutional, political, and governance relevance."
 
-        # Final formatted content
         content = (
-            f"**Concept Overview:** {intro}\n\n"
-            f"**Classification / Types:** {classification if classification else 'The concept has multiple dimensions based on context and application.'}\n\n"
-            f"**Explanation:** {explanation}\n\n"
-            f"**Conclusion:** {conclusion}"
+            f"Concept Overview: {concept}\n\n"
+            f"Classification / Types: {classification}\n\n"
+            f"Explanation: {explanation}\n\n"
+            f"Conclusion: {conclusion}"
         )
 
         cards.append({
