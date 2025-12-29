@@ -169,57 +169,58 @@ def normalize_text(s):
 
 import re
 
+def is_useful_sentence(s):
+    """
+    Returns True if sentence seems educational/conceptual, not administrative.
+    """
+    s = s.lower()
+    skip_keywords = [
+        "phone", "fax", "isbn", "copyright", "page", "address", "reprint", 
+        "ncertain", "office", "publication division", "price", "pd", "bs"
+    ]
+    return all(k not in s for k in skip_keywords) and len(s.split()) > 5
+
 def generate_flashcards(chunks, topic, max_cards=1):
     """
-    Generates structured and summarized flashcards for a given topic.
-
-    Each flashcard contains:
-    - Concept Overview
-    - Explanation
-    - Classification / Types
-    - Conclusion
-    - Points to Remember
+    Generates a single high-quality flashcard for a topic by:
+    1. Combining all chunks
+    2. Filtering out irrelevant text
+    3. Summarizing
+    4. Creating structured flashcard
     """
-
-    # Combine all relevant chunks into one paragraph
-    all_text = " ".join([re.sub(r'\s+', ' ', ch.strip()) for ch in chunks if is_conceptual(ch)])
-
-    if not all_text:
-        return []
-
+    # Combine all chunks
+    all_text = " ".join(chunks)
+    
     # Split into sentences
-    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', all_text) if is_conceptual(s)]
-
+    sentences = re.split(r'(?<=[.?!])\s+', all_text)
+    
+    # Filter out junk
+    sentences = [s.strip() for s in sentences if is_useful_sentence(s)]
+    
     if not sentences:
         return []
-
-    # Concept Overview: first sentence
+    
+    # Concept overview: first meaningful sentence
     concept_overview = sentences[0]
-
-    # Explanation: next few sentences
-    explanation = " ".join(sentences[1:6]) if len(sentences) > 1 else concept_overview
-
-    # Classification / Types: generic template (can be improved per subject)
-    classification = "These ideas relate to constitutional, legal, political, and social dimensions."
-
-    # Conclusion: summarize key takeaway
-    conclusion = (
-        "Overall, this concept promotes justice, equality, democratic governance, "
-        "and helps students understand their rights and responsibilities."
-    )
-
-    # Points to remember: extract 3-5 concise points
+    
+    # Explanation: next 5-10 meaningful sentences
+    explanation = " ".join(sentences[1:10]) if len(sentences) > 1 else concept_overview
+    
+    # Classification / Types
+    classification = "These ideas relate to constitutional values, democratic governance, and social responsibility."
+    
+    # Conclusion
+    conclusion = "Overall, this concept strengthens democracy and promotes justice, equality, and responsible citizenship."
+    
+    # Points to Remember: extract 3-5 short sentences
     points_to_remember = []
-    for s in sentences[1:10]:
-        # Convert sentence to short bullet
-        bullet = s
-        if len(bullet.split()) > 25:
-            bullet = " ".join(bullet.split()[:25]) + "..."
+    for s in sentences[1:15]:
+        words = s.split()
+        bullet = " ".join(words[:25]) + ("..." if len(words) > 25 else "")
         points_to_remember.append(bullet)
         if len(points_to_remember) >= 5:
             break
-
-    # Assemble flashcard
+    
     card = {
         "title": topic.capitalize(),
         "content": (
@@ -230,8 +231,8 @@ def generate_flashcards(chunks, topic, max_cards=1):
             f"Points to Remember:\n- " + "\n- ".join(points_to_remember)
         )
     }
-
-    return [card]  # single summarized flashcard for the topic
+    
+    return [card]
 
 
 
