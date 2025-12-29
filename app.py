@@ -167,7 +167,7 @@ def normalize_text(s):
     s = re.sub(r"\s+", " ", s)
     return s.strip().capitalize()
 
-def generate_flashcards(chunks, n):
+def generate_flashcards(chunks, topic, max_cards=5):
     cards = []
     for ch in chunks[:n]:
         bullets = [b.strip() for b in re.split(r"[.;]", ch) if is_conceptual(b)]
