@@ -167,12 +167,8 @@ def normalize_text(s):
     s = re.sub(r"\s+", " ", s)
     return s.strip().capitalize()
 
-import re
-
 def is_useful_sentence(s):
-    """
-    Returns True if sentence seems educational/conceptual, not administrative.
-    """
+    """Return True if sentence seems educational/conceptual, not administrative."""
     s = s.lower()
     skip_keywords = [
         "phone", "fax", "isbn", "copyright", "page", "address", "reprint", 
@@ -180,13 +176,9 @@ def is_useful_sentence(s):
     ]
     return all(k not in s for k in skip_keywords) and len(s.split()) > 5
 
-def generate_flashcards(chunks, topic, max_cards=1):
+def generate_flashcards(chunks, topic, max_cards=5):
     """
-    Generates a single high-quality flashcard for a topic by:
-    1. Combining all chunks
-    2. Filtering out irrelevant text
-    3. Summarizing
-    4. Creating structured flashcard
+    Generate high-quality, student-friendly flashcards.
     """
     # Combine all chunks
     all_text = " ".join(chunks)
@@ -194,45 +186,60 @@ def generate_flashcards(chunks, topic, max_cards=1):
     # Split into sentences
     sentences = re.split(r'(?<=[.?!])\s+', all_text)
     
-    # Filter out junk
+    # Filter out non-conceptual sentences
     sentences = [s.strip() for s in sentences if is_useful_sentence(s)]
     
     if not sentences:
         return []
     
-    # Concept overview: first meaningful sentence
-    concept_overview = sentences[0]
+    # Split into flashcards roughly: each 6-10 sentences per card
+    chunk_size = max(6, len(sentences) // max_cards)
+    cards = []
     
-    # Explanation: next 5-10 meaningful sentences
-    explanation = " ".join(sentences[1:10]) if len(sentences) > 1 else concept_overview
-    
-    # Classification / Types
-    classification = "These ideas relate to constitutional values, democratic governance, and social responsibility."
-    
-    # Conclusion
-    conclusion = "Overall, this concept strengthens democracy and promotes justice, equality, and responsible citizenship."
-    
-    # Points to Remember: extract 3-5 short sentences
-    points_to_remember = []
-    for s in sentences[1:15]:
-        words = s.split()
-        bullet = " ".join(words[:25]) + ("..." if len(words) > 25 else "")
-        points_to_remember.append(bullet)
-        if len(points_to_remember) >= 5:
+    for i in range(0, len(sentences), chunk_size):
+        sub_sentences = sentences[i:i+chunk_size]
+        if not sub_sentences:
+            continue
+        
+        # Concept Overview: first sentence
+        concept_overview = sub_sentences[0]
+        
+        # Explanation: rest of sentences
+        explanation = " ".join(sub_sentences[1:]) if len(sub_sentences) > 1 else concept_overview
+        
+        # Classification / Types
+        classification_keywords = ["law", "right", "constitution", "governance", "democracy", "citizenship", "freedom", "justice", "equality"]
+        classification_found = [k for k in classification_keywords if any(k in s.lower() for s in sub_sentences)]
+        classification = "This concept relates to " + ", ".join(classification_found) if classification_found else "General constitutional and political concept."
+        
+        # Conclusion
+        conclusion = "Understanding this concept helps students learn principles of democracy, justice, equality, and constitutional governance."
+        
+        # Points to Remember: first 3-5 meaningful bullets
+        points_to_remember = []
+        for s in sub_sentences[:10]:
+            words = s.split()
+            bullet = " ".join(words[:25]) + ("..." if len(words) > 25 else "")
+            points_to_remember.append(bullet)
+            if len(points_to_remember) >= 5:
+                break
+        
+        card = {
+            "title": topic.capitalize(),
+            "content": (
+                f"Concept Overview: {concept_overview}\n\n"
+                f"Explanation: {explanation}\n\n"
+                f"Classification / Types: {classification}\n\n"
+                f"Conclusion: {conclusion}\n\n"
+                f"Points to Remember:\n- " + "\n- ".join(points_to_remember)
+            )
+        }
+        cards.append(card)
+        
+        if len(cards) >= max_cards:
             break
     
-    card = {
-        "title": topic.capitalize(),
-        "content": (
-            f"Concept Overview: {concept_overview}\n\n"
-            f"Explanation: {explanation}\n\n"
-            f"Classification / Types: {classification}\n\n"
-            f"Conclusion: {conclusion}\n\n"
-            f"Points to Remember:\n- " + "\n- ".join(points_to_remember)
-        )
-    }
-    
-    return [card]
+    return cards
 
 
 
