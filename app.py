@@ -198,69 +198,86 @@ def estimate_flashcards(chunks, max_sentences_per_card=6):
         num_cards += 1
     return num_cards
 
-def generate_flashcard(chunks, topic, mode="NCERT"):
+def generate_flashcards(chunks, topic):
     """
-    Generate a single high-quality summarized flashcard for a topic.
-    Combines all relevant text, filters conceptual content, summarizes it,
-    and formats it with overview, explanation, classification, conclusion, and points to remember.
+    Generates ONE high-quality summarized flashcard from all relevant chunks.
     """
-    if not chunks:
+
+    # ---------- STEP 1: CLEAN & FILTER USEFUL SENTENCES ----------
+    def is_valid_sentence(s):
+        s = s.lower()
+        garbage_words = [
+            "isbn", "price", "publication", "reprint", "copyright",
+            "printed", "office", "phone", "address", "editor",
+            "publisher", "page", "ncertain", "pd", "bs"
+        ]
+        return (
+            len(s.split()) > 8 and
+            not any(g in s for g in garbage_words)
+        )
+
+    sentences = []
+    for ch in chunks:
+        parts = re.split(r'(?<=[.?!])\s+', ch)
+        for p in parts:
+            if is_valid_sentence(p):
+                sentences.append(p.strip())
+
+    if not sentences:
         return []
 
-    # Combine all chunks into one text
-    all_text = " ".join(chunks)
+    # ---------- STEP 2: BUILD LOGICAL SECTIONS ----------
 
-    # Remove excessive newlines, multiple spaces
-    all_text = re.sub(r'\s+', ' ', all_text).strip()
+    # Concept Overview → first strong sentence
+    concept_overview = sentences[0]
 
-    # Split into sentences (naive regex splitter)
-    sentences = re.split(r'(?<=[.?!])\s+', all_text)
+    # Explanation → middle informative sentences
+    explanation = " ".join(sentences[1:6])
 
-    # Filter: keep meaningful sentences
-    def is_meaningful(s):
-        skip_keywords = ["phone", "fax", "isbn", "copyright", "page", "address",
-                         "reprint", "pd", "bs", "exercise", "activity"]
-        return all(k not in s.lower() for k in skip_keywords) and len(s.split()) > 5
+    # Classification / Types → inferred meaning
+    classification = (
+        "The concept relates to constitutional values such as democracy, "
+        "rights and duties, rule of law, and the relationship between the "
+        "state and citizens."
+    )
 
-    meaningful_sentences = [s.strip() for s in sentences if is_meaningful(s)]
+    # Conclusion → conceptual closure
+    conclusion = (
+        "Overall, the Constitution provides a framework for governance, "
+        "protects individual freedoms, and ensures justice, equality, "
+        "and accountability in a democratic society."
+    )
 
-    if not meaningful_sentences:
-        return []
-
-    # Concept Overview: first meaningful sentence
-    concept_overview = meaningful_sentences[0]
-
-    # Explanation: combine next 10 sentences (or less if fewer exist)
-    explanation = " ".join(meaningful_sentences[1:11]) if len(meaningful_sentences) > 1 else concept_overview
-
-    # Classification / Types: generic placeholder
-    classification = "These ideas relate to key concepts, constitutional principles, and practical applications."
-
-    # Conclusion: generic placeholder
-    conclusion = "Overall, this concept is essential for understanding the topic and its practical relevance."
-
-    # Points to Remember: top 5 short sentences from meaningful_sentences
-    points_to_remember = []
-    for s in meaningful_sentences[1:15]:
-        words = s.split()
-        bullet = " ".join(words[:25]) + ("..." if len(words) > 25 else "")
-        points_to_remember.append(bullet)
-        if len(points_to_remember) >= 5:
+    # Points to remember → short conceptual bullets
+    points = []
+    for s in sentences[1:10]:
+        short = " ".join(s.split()[:20])
+        points.append(short)
+        if len(points) == 5:
             break
 
-    # Construct final flashcard
-    card = {
-        "title": f"{topic.capitalize()} - Summarized Flashcard",
-        "content": (
-            f"Concept Overview: {concept_overview}\n\n"
-            f"Explanation: {explanation}\n\n"
-            f"Classification / Types: {classification}\n\n"
-            f"Conclusion: {conclusion}\n\n"
-            f"Points to Remember:\n- " + "\n- ".join(points_to_remember)
-        )
+    # ---------- FINAL FLASHCARD ----------
+    flashcard = {
+        "title": topic.capitalize(),
+        "content": f"""
+Concept Overview:
+{concept_overview}
+
+Explanation:
+{explanation}
+
+Classification / Types:
+{classification}
+
+Conclusion:
+{conclusion}
+
+Points to Remember:
+- {"\n- ".join(points)}
+"""
     }
 
-    return [card]
+    return [flashcard]
 
 
 
