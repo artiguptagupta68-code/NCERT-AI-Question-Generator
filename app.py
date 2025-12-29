@@ -167,12 +167,59 @@ def normalize_text(s):
     s = re.sub(r"\s+", " ", s)
     return s.strip().capitalize()
 
+import re
+
 def generate_flashcards(chunks, topic, max_cards=5):
+    """
+    Generates structured flashcards for a given topic from text chunks.
+
+    Each flashcard has:
+    - Concept Overview
+    - Classification / Types
+    - Explanation
+    - Conclusion
+    """
     cards = []
-    for ch in chunks[:n]:
-        bullets = [b.strip() for b in re.split(r"[.;]", ch) if is_conceptual(b)]
-        cards.append(bullets[:5])
+
+    for ch in chunks:
+        # Normalize and filter conceptual sentences
+        sentences = [re.sub(r'\s+', ' ', s.strip()) 
+                     for s in re.split(r'(?<=[.!?])\s+', ch) 
+                     if is_conceptual(s)]
+
+        if len(sentences) < 2:
+            continue  # skip chunks with too little info
+
+        # Concept overview: first sentence
+        concept_overview = sentences[0]
+
+        # Explanation: next 2-4 sentences
+        explanation = " ".join(sentences[1:5])
+
+        # Classification / Types: default template
+        classification = "These ideas relate to constitutional values, democratic governance, and social responsibility."
+
+        # Conclusion: default template
+        conclusion = "Overall, this concept strengthens democracy and promotes justice, equality, and responsible citizenship."
+
+        # Assemble flashcard
+        card = {
+            "title": topic.capitalize(),
+            "content": (
+                f"Concept Overview: {concept_overview}\n\n"
+                f"Classification / Types: {classification}\n\n"
+                f"Explanation: {explanation}\n\n"
+                f"Conclusion: {conclusion}"
+            )
+        }
+
+        cards.append(card)
+
+        if len(cards) >= max_cards:
+            break
+
     return cards
+
 
 
 
