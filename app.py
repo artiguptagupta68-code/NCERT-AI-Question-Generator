@@ -323,8 +323,12 @@ with tab3:
 with tab4:
     mode = st.radio("Depth", ["NCERT", "UPSC"], key="flash_std", horizontal=True)
     if topic.strip():
-        rel = retrieve_relevant_chunks(chunks, embeddings, topic, mode, 10)
-        cards = generate_flashcards(chunks, topic, max_cards=5)
-        for i, c in enumerate(cards, 1):
-            st.markdown(f"### 📌 Flashcard {i}: {c['title']}")
-            st.write(c["content"])
+        # Retrieve top relevant chunks for topic
+        rel = retrieve_relevant_chunks(chunks, embeddings, topic, standard=mode, top_k=20)
+        if not rel:
+            st.error("❌ No relevant content found for flashcards.")
+        else:
+            cards = generate_flashcards(rel, topic, max_cards=num_q)
+            for i, c in enumerate(cards, 1):
+                st.markdown(f"### 📌 Flashcard {i}: {c['title']}")
+                st.write(c["content"])
