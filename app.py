@@ -183,54 +183,43 @@ def is_conceptual_sentence(s):
         return False
     return True
 
-def generate_flashcards(chunks, topic, max_cards=5):
-    """
-    Generate high-quality, student-friendly flashcards.
-    """
+def generate_flashcards(chunks, topic, max_cards=3):
     # Combine all chunks
     all_text = " ".join(chunks)
-    
     # Split into sentences
     sentences = re.split(r'(?<=[.?!])\s+', all_text)
-    
-    # Filter out non-conceptual sentences
-    sentences = [s.strip() for s in sentences if is_useful_sentence(s)]
-    
+    # Keep only conceptual sentences
+    sentences = [s.strip() for s in sentences if is_conceptual_sentence(s)]
     if not sentences:
         return []
-    
-    # Split into flashcards roughly: each 6-10 sentences per card
+
+    # Split sentences into multiple cards if too long
     chunk_size = max(6, len(sentences) // max_cards)
     cards = []
-    
+
     for i in range(0, len(sentences), chunk_size):
-        sub_sentences = sentences[i:i+chunk_size]
-        if not sub_sentences:
+        sub = sentences[i:i+chunk_size]
+        if not sub:
             continue
-        
-        # Concept Overview: first sentence
-        concept_overview = sub_sentences[0]
-        
-        # Explanation: rest of sentences
-        explanation = " ".join(sub_sentences[1:]) if len(sub_sentences) > 1 else concept_overview
-        
-        # Classification / Types
-        classification_keywords = ["law", "right", "constitution", "governance", "democracy", "citizenship", "freedom", "justice", "equality"]
-        classification_found = [k for k in classification_keywords if any(k in s.lower() for s in sub_sentences)]
-        classification = "This concept relates to " + ", ".join(classification_found) if classification_found else "General constitutional and political concept."
-        
-        # Conclusion
-        conclusion = "Understanding this concept helps students learn principles of democracy, justice, equality, and constitutional governance."
-        
-        # Points to Remember: first 3-5 meaningful bullets
-        points_to_remember = []
-        for s in sub_sentences[:10]:
+
+        concept_overview = sub[0]
+        explanation = " ".join(sub[1:6]) if len(sub) > 1 else concept_overview
+        # Classification based on detected keywords
+        classification = []
+        for kw in ["constitution", "law", "governance", "democracy", "freedom", "citizen", "justice", "equality"]:
+            if any(kw in s.lower() for s in sub):
+                classification.append(kw.capitalize())
+        classification = ", ".join(classification) if classification else "General Constitutional Concept"
+
+        conclusion = "Understanding this concept helps students grasp core principles of democracy, rights, and governance."
+
+        # Points to remember (short simplified bullets)
+        points = []
+        for s in sub[:5]:
             words = s.split()
-            bullet = " ".join(words[:25]) + ("..." if len(words) > 25 else "")
-            points_to_remember.append(bullet)
-            if len(points_to_remember) >= 5:
-                break
-        
+            bullet = " ".join(words[:20]) + ("..." if len(words) > 20 else "")
+            points.append(bullet)
+
         card = {
             "title": topic.capitalize(),
             "content": (
@@ -238,16 +227,14 @@ def generate_flashcards(chunks, topic, max_cards=5):
                 f"Explanation: {explanation}\n\n"
                 f"Classification / Types: {classification}\n\n"
                 f"Conclusion: {conclusion}\n\n"
-                f"Points to Remember:\n- " + "\n- ".join(points_to_remember)
+                f"Points to Remember:\n- " + "\n- ".join(points)
             )
         }
         cards.append(card)
-        
         if len(cards) >= max_cards:
             break
-    
-    return cards
 
+    return cards
 
 
 
