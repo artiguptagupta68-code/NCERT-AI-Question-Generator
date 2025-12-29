@@ -167,14 +167,21 @@ def normalize_text(s):
     s = re.sub(r"\s+", " ", s)
     return s.strip().capitalize()
 
-def is_useful_sentence(s):
-    """Return True if sentence seems educational/conceptual, not administrative."""
-    s = s.lower()
-    skip_keywords = [
-        "phone", "fax", "isbn", "copyright", "page", "address", "reprint", 
-        "ncertain", "office", "publication division", "price", "pd", "bs"
-    ]
-    return all(k not in s for k in skip_keywords) and len(s.split()) > 5
+def is_conceptual_sentence(s):
+    s = s.strip()
+    if len(s.split()) < 8:
+        return False
+    # Skip OCR artifacts or admin info
+    skip = ["phone", "fax", "isbn", "copyright", "page", "address", 
+            "reprint", "pd", "bs", "ncertain", "office", "publication division"]
+    if any(k in s.lower() for k in skip):
+        return False
+    # Keep only sentences that contain key conceptual words
+    keywords = ["right", "law", "constitution", "governance", "democracy",
+                "citizen", "freedom", "justice", "equality", "policy"]
+    if not any(k in s.lower() for k in keywords):
+        return False
+    return True
 
 def generate_flashcards(chunks, topic, max_cards=5):
     """
