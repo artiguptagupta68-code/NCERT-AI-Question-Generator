@@ -198,58 +198,63 @@ def estimate_flashcards(chunks, max_sentences_per_card=6):
         num_cards += 1
     return num_cards
 
-def generate_flashcards(chunks, topic, max_cards=3):
+def generate_flashcard(chunks, topic, max_sentences=12):
+    """
+    Generates a single high-quality flashcard for a topic:
+    - Combines all relevant chunks
+    - Filters out irrelevant/admin text
+    - Summarizes content into Concept Overview, Explanation, Classification, Conclusion, Points
+    """
     # Combine all chunks
     all_text = " ".join(chunks)
+    
     # Split into sentences
     sentences = re.split(r'(?<=[.?!])\s+', all_text)
-    # Keep only conceptual sentences
-    sentences = [s.strip() for s in sentences if is_conceptual_sentence(s)]
-    if not sentences:
-        return []
-
-    # Split sentences into multiple cards if too long
-    chunk_size = max(6, len(sentences) // max_cards)
-    cards = []
-
-    for i in range(0, len(sentences), chunk_size):
-        sub = sentences[i:i+chunk_size]
-        if not sub:
-            continue
-
-        concept_overview = sub[0]
-        explanation = " ".join(sub[1:6]) if len(sub) > 1 else concept_overview
-        # Classification based on detected keywords
-        classification = []
-        for kw in ["constitution", "law", "governance", "democracy", "freedom", "citizen", "justice", "equality"]:
-            if any(kw in s.lower() for s in sub):
-                classification.append(kw.capitalize())
-        classification = ", ".join(classification) if classification else "General Constitutional Concept"
-
-        conclusion = "Understanding this concept helps students grasp core principles of democracy, rights, and governance."
-
-        # Points to remember (short simplified bullets)
-        points = []
-        for s in sub[:5]:
-            words = s.split()
-            bullet = " ".join(words[:20]) + ("..." if len(words) > 20 else "")
-            points.append(bullet)
-
-        card = {
-            "title": topic.capitalize(),
-            "content": (
-                f"Concept Overview: {concept_overview}\n\n"
-                f"Explanation: {explanation}\n\n"
-                f"Classification / Types: {classification}\n\n"
-                f"Conclusion: {conclusion}\n\n"
-                f"Points to Remember:\n- " + "\n- ".join(points)
-            )
-        }
-        cards.append(card)
-        if len(cards) >= max_cards:
+    
+    # Filter out junk/admin text
+    skip_keywords = [
+        "phone", "fax", "isbn", "copyright", "page", "address", 
+        "reprint", "office", "publication division", "price", "pd", "bs"
+    ]
+    conceptual_sents = [s.strip() for s in sentences if all(k not in s.lower() for k in skip_keywords) and len(s.split()) > 5]
+    
+    if not conceptual_sents:
+        return None
+    
+    # Concept Overview: first meaningful sentence
+    concept_overview = conceptual_sents[0]
+    
+    # Explanation: next few sentences
+    explanation = " ".join(conceptual_sents[1:max_sentences]) if len(conceptual_sents) > 1 else concept_overview
+    
+    # Classification / Types
+    classification = "These ideas can be understood through their key dimensions and types, highlighting important aspects of the topic."
+    
+    # Conclusion
+    conclusion = "In summary, this concept is essential for understanding broader implications and practical relevance."
+    
+    # Points to Remember (short bullet points)
+    points_to_remember = []
+    for s in conceptual_sents[1:10]:
+        bullet = " ".join(s.split()[:20]) + ("..." if len(s.split())>20 else "")
+        points_to_remember.append(bullet)
+        if len(points_to_remember) >= 5:
             break
+    
+    # Construct flashcard
+    flashcard = {
+        "title": topic.capitalize(),
+        "content": (
+            f"Concept Overview: {concept_overview}\n\n"
+            f"Explanation: {explanation}\n\n"
+            f"Classification / Types: {classification}\n\n"
+            f"Conclusion: {conclusion}\n\n"
+            f"Points to Remember:\n- " + "\n- ".join(points_to_remember)
+        )
+    }
+    
+    return flashcard
 
-    return cards
 
 
 
