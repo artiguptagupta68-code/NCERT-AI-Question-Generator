@@ -168,43 +168,34 @@ def normalize_text(s):
     return s.strip().capitalize()
 
 def generate_flashcards(chunks, topic, mode="NCERT", max_cards=5):
-    """
-    Generates structured flashcards with:
-    - Concept Overview
-    - Classification
-    - Explanation
-    - Conclusion
-    """
-
     cards = []
 
     for ch in chunks:
-        # Clean and split into meaningful sentences
+        # Clean and split sentences
         sentences = [
             normalize_text(s)
             for s in re.split(r"(?<=[.?!])\s+", ch)
             if is_conceptual(s)
         ]
 
-        if len(sentences) < 3:
+        if not sentences:
             continue
 
-        # ---- STRUCTURE LOGIC ----
+        # -------- STRUCTURE LOGIC --------
         concept = sentences[0]
 
         classification = (
-            "The concept can be understood through different dimensions such as legal, political, and social aspects."
+            "This concept can be understood through its legal, political, and social dimensions."
         )
 
-        explanation = " ".join(sentences[1:4])
+        explanation = " ".join(sentences[1:3]) if len(sentences) > 1 else sentences[0]
 
         conclusion = (
-            "Thus, this concept plays a crucial role in shaping democratic values, "
-            "ensuring justice, equality, and good governance."
+            "Overall, this concept plays an important role in ensuring justice, equality, and democratic governance."
         )
 
         if mode.upper() == "UPSC":
-            conclusion += " It has strong constitutional, political, and governance relevance."
+            conclusion += " It has significant constitutional and administrative relevance."
 
         content = (
             f"Concept Overview: {concept}\n\n"
