@@ -68,9 +68,12 @@ def clean_text(text):
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 
-def load_all_texts(extract_dir=EXTRACT_DIR):
+def load_all_texts(subject=None, extract_dir=EXTRACT_DIR):
     texts = []
     for pdf in Path(extract_dir).rglob("*.pdf"):
+        if subject:
+            if not any(k in pdf.stem.lower() for k in SUBJECT_KEYWORDS.get(subject, [])):
+                continue
         t = clean_text(read_pdf(pdf))
         if len(t.split()) > 100:
             texts.append(t)
@@ -153,6 +156,8 @@ def embed_chunks(chunks):
     return embedder.encode(chunks, convert_to_numpy=True)
 
 def retrieve_relevant_chunks(chunks, embeddings, query, mode="NCERT", top_k=TOP_K):
+    if len(chunks) == 0:
+        return []
     q_emb = embedder.encode([query], convert_to_numpy=True)
     sims = cosine_similarity(q_emb, embeddings)[0]
     threshold = SIMILARITY_THRESHOLD_UPSC if mode=="UPSC" else SIMILARITY_THRESHOLD_NCERT
@@ -205,9 +210,13 @@ def generate_flashcard(chunks, topic):
 if st.sidebar.button("📥 Load NCERT PDFs"):
     download_and_extract()
 
+subject = st.selectbox("Subject", SUBJECTS)
+topic = st.text_input("Topic")
+num_q = st.number_input("Number of Questions", 1, 10, 5)
+
 texts, chunks = [], []
 if os.path.exists(EXTRACT_DIR):
-    texts = load_all_texts()
+    texts = load_all_texts(subject)
     for t in texts:
         chunks.extend(semantic_chunking(t, embedder))
 
@@ -226,10 +235,6 @@ if chunks:
 # UI TABS
 # --------------------------------------------
 tab1, tab2, tab3, tab4 = st.tabs(["📝 Subjective", "🧠 MCQs", "💬 Ask NCERT", "🧠 Flashcards"])
-
-subject = st.selectbox("Subject", SUBJECTS)
-topic = st.text_input("Topic")
-num_q = st.number_input("Number of Questions", 1, 10, 5)
 
 # SUBJECTIVE
 with tab1:
