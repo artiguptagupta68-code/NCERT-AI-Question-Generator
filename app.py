@@ -318,7 +318,7 @@ num_q = st.number_input("Number of Questions", 1, 10, 5)
 # --------------------------------------------
 texts, chunks = [], []
 if os.path.exists(EXTRACT_DIR):
-    texts = load_all_texts(subject)
+    texts = load_all_texts()
     for t in texts:
         chunks.extend(semantic_chunks(t))
 
