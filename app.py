@@ -183,7 +183,7 @@ def is_conceptual_sentence(s):
         return False
     return True
 
-ef generate_flashcard(chunks, topic):
+def generate_flashcard(chunks, topic):
     """
     Generates ONE high-quality summarized flashcard from all relevant chunks.
     """
