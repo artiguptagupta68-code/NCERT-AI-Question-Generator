@@ -18,7 +18,7 @@ EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
 TOP_K = 6
 SIMILARITY_THRESHOLD_NCERT = 0.35
 SIMILARITY_THRESHOLD_UPSC = 0.45
-
+EPOCHS = 15 
 # -------------------------------
 # STREAMLIT SETUP
 # -------------------------------
