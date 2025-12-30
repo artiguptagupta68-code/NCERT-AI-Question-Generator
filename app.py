@@ -198,10 +198,12 @@ def estimate_flashcard(chunks, max_sentences_per_card=6):
         num_cards += 1
     return num_cards
 
-def generate_flashcards(chunks, topic):
+def generate_flashcard(chunks, topic):
     """
     Generates ONE high-quality summarized flashcard from all relevant chunks.
     """
+
+    import re
 
     # ---------- STEP 1: CLEAN & FILTER USEFUL SENTENCES ----------
     def is_valid_sentence(s):
@@ -228,27 +230,22 @@ def generate_flashcards(chunks, topic):
 
     # ---------- STEP 2: BUILD LOGICAL SECTIONS ----------
 
-    # Concept Overview → first strong sentence
     concept_overview = sentences[0]
 
-    # Explanation → middle informative sentences
     explanation = " ".join(sentences[1:6])
 
-    # Classification / Types → inferred meaning
     classification = (
         "The concept relates to constitutional values such as democracy, "
         "rights and duties, rule of law, and the relationship between the "
         "state and citizens."
     )
 
-    # Conclusion → conceptual closure
     conclusion = (
         "Overall, the Constitution provides a framework for governance, "
         "protects individual freedoms, and ensures justice, equality, "
         "and accountability in a democratic society."
     )
 
-    # Points to remember → short conceptual bullets
     points = []
     for s in sentences[1:10]:
         short = " ".join(s.split()[:20])
@@ -256,7 +253,6 @@ def generate_flashcards(chunks, topic):
         if len(points) == 5:
             break
 
-    # ---------- FINAL FLASHCARD ----------
     flashcard = {
         "title": topic.capitalize(),
         "content": f"""
@@ -278,12 +274,6 @@ Points to Remember:
     }
 
     return [flashcard]
-
-
-
-
-
-
 # --------------------------------------------
 # SIDEBAR
 # --------------------------------------------
@@ -359,19 +349,18 @@ with tab3:
                             answer_sentences.append(normalize_text(s))
                 st.write(" ".join(answer_sentences[:6]))
 
-# FLASHCARDS
 with tab4:
     mode = st.radio("Depth", ["NCERT", "UPSC"], key="flash_std", horizontal=True)
+
     if topic.strip():
-        # Retrieve relevant chunks
         rel = retrieve_relevant_chunks(chunks, embeddings, topic, mode, top_k=10)
-        
-        # Generate **one summarized flashcard**
-        cards =  generate_flashcard(rel, topic, mode)
-        
+
+        cards = generate_flashcard(rel, topic)
+
         if cards:
             c = cards[0]
             st.markdown(f"### 📌 {c['title']}")
             st.write(c["content"])
         else:
             st.warning("No relevant content found to generate flashcard.")
+
