@@ -109,7 +109,7 @@ def semantic_chunking(text, embedder, max_words=180, sim_threshold=0.65):
 def load_embedder():
     return SentenceTransformer(EMBEDDING_MODEL_NAME)
 
-embedder = load_embedder()
+embedder = load_embedder()  # MUST come first before chunks
 
 # -------------------------------
 # TRAINING
@@ -227,13 +227,14 @@ with st.sidebar:
             train_embedding_model(chunks, embedder, epochs=EPOCHS)
 
 # -------------------------------
-# AUTO-LOAD PDFs & CHUNKS
+# LOAD PDFs & CREATE CHUNKS
 # -------------------------------
 texts, chunks = [], []
+
 if not os.path.exists(EXTRACT_DIR) or not list(Path(EXTRACT_DIR).rglob("*.pdf")):
     download_and_extract()
 
-texts = load_all_texts(subject)
+texts = load_all_texts(subject=None)
 for t in texts:
     chunks.extend(semantic_chunking(t, embedder))
 
