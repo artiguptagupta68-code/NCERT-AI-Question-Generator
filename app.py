@@ -1,7 +1,4 @@
-import os
-import zipfile
-import re
-import random
+import os, zipfile, re, random
 from pathlib import Path
 import streamlit as st
 import gdown
@@ -22,24 +19,12 @@ EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
 TOP_K = 6
 SIMILARITY_THRESHOLD_NCERT = 0.35
 SIMILARITY_THRESHOLD_UPSC = 0.45
-EPOCHS = 15
-BATCH_SIZE = 16
 
 # -------------------------------
 # STREAMLIT SETUP
 # -------------------------------
 st.set_page_config(page_title="NCERT AI Generator", layout="wide")
 st.title("📘 NCERT + UPSC AI Question Generator")
-
-# -------------------------------
-# SESSION STATE INITIALIZATION
-# -------------------------------
-if 'texts' not in st.session_state:
-    st.session_state['texts'] = []
-if 'chunks' not in st.session_state:
-    st.session_state['chunks'] = []
-if 'embeddings' not in st.session_state:
-    st.session_state['embeddings'] = np.empty((0, 384))
 
 # -------------------------------
 # LOAD EMBEDDER
@@ -51,31 +36,20 @@ def load_embedder():
 embedder = load_embedder()
 
 # -------------------------------
-# UTILITIES
+# PDF DOWNLOAD & EXTRACTION
 # -------------------------------
 def download_and_extract():
     if not os.path.exists(ZIP_PATH):
         st.info("📥 Downloading NCERT ZIP...")
         gdown.download(f"https://drive.google.com/uc?id={FILE_ID}", ZIP_PATH, quiet=False)
-    
     os.makedirs(EXTRACT_DIR, exist_ok=True)
-    
-    # Extract main zip
     with zipfile.ZipFile(ZIP_PATH, "r") as zip_ref:
         zip_ref.extractall(EXTRACT_DIR)
-    
-    # Extract nested zips if any
-    for zfile in Path(EXTRACT_DIR).rglob("*.zip"):
-        try:
-            target = zfile.parent / zfile.stem
-            target.mkdir(exist_ok=True)
-            with zipfile.ZipFile(zfile, "r") as inner:
-                inner.extractall(target)
-        except:
-            pass
-    
     st.success("✅ NCERT PDFs extracted!")
 
+# -------------------------------
+# READ & CLEAN PDF
+# -------------------------------
 def read_pdf(path):
     try:
         reader = PdfReader(path)
@@ -85,8 +59,7 @@ def read_pdf(path):
 
 def clean_text(text):
     text = re.sub(r"(activity|let us|exercise|project|editor|reprint|copyright|isbn).*", " ", text, flags=re.I)
-    text = re.sub(r"\s+", " ", text)
-    return text.strip()
+    return re.sub(r"\s+", " ", text).strip()
 
 def load_all_texts():
     texts = []
@@ -96,162 +69,108 @@ def load_all_texts():
             texts.append(t)
     return texts
 
-def semantic_chunking(text):
+# -------------------------------
+# SEMANTIC CHUNKING
+# -------------------------------
+def semantic_chunking(text, max_words=180, sim_threshold=0.65):
     sentences = re.split(r"(?<=[.?!])\s+", text)
     sentences = [s for s in sentences if len(s.split()) > 6]
-    return sentences  # simple chunking, can be enhanced
+    if len(sentences) < 2:
+        return sentences
 
-def embed_chunks(chunks):
-    if not chunks:
-        return np.empty((0, 384))
-    return embedder.encode(chunks, convert_to_numpy=True)
+    embeddings_arr = embedder.encode(sentences, convert_to_numpy=True)
+    chunks = []
+    current = [sentences[0]]
+    current_emb = embeddings_arr[0]
 
+    for i in range(1, len(sentences)):
+        sim = cosine_similarity([current_emb], [embeddings_arr[i]])[0][0]
+        length = sum(len(s.split()) for s in current)
+        if sim < sim_threshold or length > max_words:
+            chunks.append(" ".join(current))
+            current = [sentences[i]]
+            current_emb = embeddings_arr[i]
+        else:
+            current.append(sentences[i])
+            current_emb = np.mean([current_emb, embeddings_arr[i]], axis=0)
+    if current:
+        chunks.append(" ".join(current))
+    return chunks
+
+# -------------------------------
+# RETRIEVAL
+# -------------------------------
 def retrieve_relevant_chunks(chunks, embeddings, query, mode="NCERT", top_k=TOP_K):
-    if not chunks.any():
+    if not chunks:
         return []
     q_emb = embedder.encode([query], convert_to_numpy=True)
     sims = cosine_similarity(q_emb, embeddings)[0]
-    threshold = SIMILARITY_THRESHOLD_UPSC if mode == "UPSC" else SIMILARITY_THRESHOLD_NCERT
+    threshold = SIMILARITY_THRESHOLD_UPSC if mode=="UPSC" else SIMILARITY_THRESHOLD_NCERT
     ranked = sorted(zip(chunks, sims), key=lambda x: x[1], reverse=True)
-    return [c for c, s in ranked if s >= threshold][:top_k]
+    retrieved = [c for c, s in ranked if s >= threshold][:top_k]
+    st.write(f"🔹 Retrieved {len(retrieved)} chunks for query: '{query}'")
+    return retrieved
 
-def normalize_text(s):
-    s = re.sub(r"\b([a-z])\s+([a-z])\b", r"\1\2", s)
-    s = re.sub(r"\s+", " ", s)
-    return s.strip().capitalize()
-
-def is_conceptual(s):
-    s = s.strip()
-    if len(s.split()) < 8:
-        return False
-    skip = ["phone", "fax", "isbn", "copyright", "page", "address", 
-            "reprint", "pd", "bs", "ncertain", "office", "publication division"]
-    if any(k in s.lower() for k in skip):
-        return False
-    keywords = ["right", "law", "constitution", "governance", "democracy",
-                "citizen", "freedom", "justice", "equality", "policy"]
-    return any(k in s.lower() for k in keywords)
-
+# -------------------------------
+# FLASHCARDS
+# -------------------------------
 def generate_flashcard(chunks, topic):
+    if not chunks:
+        return []
     sentences = []
     for ch in chunks:
         parts = re.split(r'(?<=[.?!])\s+', ch)
-        for p in parts:
-            if len(p.split()) > 8:
-                sentences.append(p.strip())
+        sentences.extend([p.strip() for p in parts if len(p.split()) > 8])
     if not sentences:
         return []
-    concept_overview = sentences[0]
-    explanation = " ".join(sentences[1:6])
-    classification = "The concept relates to democracy, rights, rule of law, and citizen-state relations."
-    conclusion = "Overall, the Constitution provides a framework for governance and ensures justice, equality, and accountability."
-    points = [" ".join(s.split()[:20]) for s in sentences[1:6]]
     flashcard = {
         "title": topic.capitalize(),
-        "content": f"""
-Concept Overview:
-{concept_overview}
-
-Explanation:
-{explanation}
-
-Classification / Types:
-{classification}
-
-Conclusion:
-{conclusion}
-
-Points to Remember:
-- {"\n- ".join(points)}
-"""
+        "content": "\n".join(sentences[:10])
     }
     return [flashcard]
 
 # -------------------------------
-# GLOBALS
+# SIDEBAR
 # -------------------------------
-texts = []
-chunks = []
-embeddings = np.empty((0, 384))
-
 with st.sidebar:
     if st.button("📥 Load NCERT PDFs", key="load_pdfs"):
         download_and_extract()
-        texts = load_all_texts()
-        if not texts:
-            st.warning("No PDF content found! Check if PDFs are readable.")
-        else:
-            st.success(f"✅ Loaded {len(texts)} PDFs")
-            chunks = [s for t in texts for s in semantic_chunking(t)]
-            embeddings = embed_chunks(chunks)
-            
-            # Save in session_state
-            st.session_state['texts'] = texts
-            st.session_state['chunks'] = chunks
-            st.session_state['embeddings'] = embeddings
-
+        st.session_state['texts'] = load_all_texts()
+        st.success(f"Loaded {len(st.session_state['texts'])} PDFs")
 
 # -------------------------------
 # MAIN APP
 # -------------------------------
-subject = st.selectbox("Subject", SUBJECTS, key="subject_select")
-topic = st.text_input("Topic", key="topic_input")
-num_q = st.number_input("Number of Questions", 1, 10, 5, key="num_q_input")
+subject = st.selectbox("Subject", SUBJECTS)
+topic = st.text_input("Topic")
+num_q = st.number_input("Number of Questions", 1, 10, 5)
 
-tab1, tab2, tab3, tab4 = st.tabs(["📝 Subjective", "🧠 MCQs", "💬 Chatbot", "🧠 Flashcards"])
+# Load PDFs & create chunks
+if 'texts' not in st.session_state:
+    st.session_state['texts'] = []
+    st.session_state['chunks'] = []
+    st.session_state['embeddings'] = np.empty((0, 384))
 
-# Subjective
-with tab1:
-    std1 = st.radio("Standard", ["NCERT", "UPSC"], key="std_sub", horizontal=True)
-    if st.button("Generate Subjective", key="btn_subjective"):
-        if not topic.strip():
-            st.warning("Enter a topic first")
-        else:
-            rel = retrieve_relevant_chunks(np.array(chunks), embeddings, topic, std1)
-            for i, q in enumerate([f"Explain {topic}.", f"Describe {topic}."][:len(rel)], 1):
-                st.write(f"{i}. {q}")
+if st.session_state['texts']:
+    chunks = []
+    for t in st.session_state['texts']:
+        chunks.extend(semantic_chunking(t))
+    embeddings = embedder.encode(chunks, convert_to_numpy=True)
+    st.session_state['chunks'] = chunks
+    st.session_state['embeddings'] = embeddings
+    st.write(f"🧩 Created {len(chunks)} chunks from {len(st.session_state['texts'])} PDFs")
+else:
+    st.warning("❌ No PDF content loaded. Use sidebar to load NCERT PDFs.")
 
-# MCQs
-with tab2:
-    std2 = st.radio("Standard", ["NCERT", "UPSC"], key="std_mcq", horizontal=True)
-    if st.button("Generate MCQs", key="btn_mcq"):
-        if not topic.strip():
-            st.warning("Enter a topic first")
-        else:
-            rel = retrieve_relevant_chunks(np.array(chunks), embeddings, topic, std2)
-            for i, s in enumerate(rel[:num_q], 1):
-                opts = random.sample(rel, min(4, len(rel)))
-                st.write(f"Q{i}. {s}")
-                for j, o in enumerate(opts):
-                    st.write(f"{chr(97+j)}) {o}")
-
-# Chatbot
-with tab3:
-    chatbot_mode = st.radio("Answer Style", ["NCERT", "UPSC"], key="std_chat", horizontal=True)
-    user_q = st.text_input("Enter your question", key="user_question")
-    if st.button("Ask NCERT", key="btn_chat"):
-        if not user_q.strip():
-            st.warning("Enter a question")
-        else:
-            rel = retrieve_relevant_chunks(np.array(chunks), embeddings, user_q, chatbot_mode)
-            if not rel:
-                st.warning("No answer found in NCERT")
-            else:
-                ans = " ".join([normalize_text(s) for s in rel[:5]])
-                st.write(ans)
-
-# Flashcards
-with tab4:
-    mode = st.radio("Depth", ["NCERT", "UPSC"], key="std_flash", horizontal=True)
-    if st.button("Generate Flashcard", key="btn_flash"):
-        if not topic.strip():
-            st.warning("Enter a topic first")
-        else:
-            rel = retrieve_relevant_chunks(np.array(chunks), embeddings, topic, mode)
-            cards = generate_flashcard(rel, topic)
-            if cards:
-                c = cards[0]
-                st.markdown(f"### 📌 {c['title']}")
-                st.write(c["content"])
-            else:
-                st.warning("No relevant content found to generate flashcard.")
+# -------------------------------
+# FLASHCARD TAB
+# -------------------------------
+if topic.strip() and st.session_state['chunks']:
+    rel = retrieve_relevant_chunks(st.session_state['chunks'], st.session_state['embeddings'], topic, mode="NCERT")
+    cards = generate_flashcard(rel, topic)
+    if cards:
+        c = cards[0]
+        st.markdown(f"### 📌 {c['title']}")
+        st.write(c["content"])
+    else:
+        st.warning("No relevant content found to generate flashcard.")
