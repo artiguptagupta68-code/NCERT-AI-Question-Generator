@@ -367,7 +367,7 @@ with tab4:
         rel = retrieve_relevant_chunks(chunks, embeddings, topic, mode, top_k=10)
         
         # Generate **one summarized flashcard**
-        cards = generate_flashcards(rel, topic, mode)
+        cards =  generate_flashcards(rel, topic, mode)
         
         if cards:
             c = cards[0]
