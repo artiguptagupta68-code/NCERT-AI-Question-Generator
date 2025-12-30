@@ -38,6 +38,66 @@ BATCH_SIZE = 16
 st.set_page_config(page_title="NCERT AI Generator", layout="wide")
 st.title("📘 NCERT + UPSC AI Question Generator")
 
+@st.cache_resource
+def load_embedder():
+    return SentenceTransformer("all-MiniLM-L6-v2")
+
+embedder = load_embedder()
+
+# --------------------------------------------
+# UTILITIES
+# --------------------------------------------
+def download_and_extract():
+    if not os.path.exists(ZIP_PATH):
+        gdown.download(
+            f"https://drive.google.com/uc?id={FILE_ID}",
+            ZIP_PATH,
+            quiet=False
+        )
+
+    os.makedirs(EXTRACT_DIR, exist_ok=True)
+
+    # extract main zip
+    with zipfile.ZipFile(ZIP_PATH, "r") as z:
+        z.extractall(EXTRACT_DIR)
+
+    # extract nested zips
+    for zfile in Path(EXTRACT_DIR).rglob("*.zip"):
+        try:
+            target = zfile.parent / zfile.stem
+            target.mkdir(exist_ok=True)
+            with zipfile.ZipFile(zfile, "r") as inner:
+                inner.extractall(target)
+        except:
+            pass
+
+
+def read_pdf(path):
+    try:
+        reader = PdfReader(path)
+        return " ".join(p.extract_text() or "" for p in reader.pages)
+    except:
+        return ""
+
+
+def clean_text(text):
+    text = re.sub(
+        r"(activity|let us|exercise|project|editor|reprint|copyright|isbn).*",
+        " ",
+        text,
+        flags=re.I,
+    )
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def load_all_texts():
+    texts = []
+    for pdf in Path(EXTRACT_DIR).rglob("*.pdf"):
+        t = clean_text(read_pdf(str(pdf)))
+        if len(t.split()) > 50:
+            texts.append(t)
+    return texts
+
 # -------------------------------
 # INITIALIZE GLOBAL VARIABLES
 # -------------------------------
@@ -57,31 +117,7 @@ def download_and_extract():
         zip_ref.extractall(EXTRACT_DIR)
     st.success("✅ NCERT PDFs extracted!")
 
-# -------------------------------
-# READ & CLEAN PDF
-# -------------------------------
-def read_pdf(path):
-    try:
-        reader = PdfReader(path)
-        return " ".join(p.extract_text() or "" for p in reader.pages)
-    except:
-        return ""
 
-def clean_text(text):
-    text = re.sub(r"(exercise|summary|table|figure|copyright).*", "", text, flags=re.I)
-    text = re.sub(r"\s+", " ", text)
-    return text.strip()
-
-def load_all_texts(subject=None, extract_dir=EXTRACT_DIR):
-    texts = []
-    for pdf in Path(extract_dir).rglob("*.pdf"):
-        if subject:
-            if not any(k in pdf.stem.lower() for k in SUBJECT_KEYWORDS.get(subject, [])):
-                continue
-        t = clean_text(read_pdf(pdf))
-        if len(t.split()) > 100:
-            texts.append(t)
-    return texts
 
 # -------------------------------
 # SEMANTIC CHUNKING
