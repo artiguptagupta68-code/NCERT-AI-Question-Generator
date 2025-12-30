@@ -32,6 +32,16 @@ st.set_page_config(page_title="NCERT AI Generator", layout="wide")
 st.title("📘 NCERT + UPSC AI Question Generator")
 
 # -------------------------------
+# SESSION STATE INITIALIZATION
+# -------------------------------
+if 'texts' not in st.session_state:
+    st.session_state['texts'] = []
+if 'chunks' not in st.session_state:
+    st.session_state['chunks'] = []
+if 'embeddings' not in st.session_state:
+    st.session_state['embeddings'] = np.empty((0, 384))
+
+# -------------------------------
 # LOAD EMBEDDER
 # -------------------------------
 @st.cache_resource
@@ -164,9 +174,6 @@ texts = []
 chunks = []
 embeddings = np.empty((0, 384))
 
-# -------------------------------
-# SIDEBAR
-# -------------------------------
 with st.sidebar:
     if st.button("📥 Load NCERT PDFs", key="load_pdfs"):
         download_and_extract()
@@ -177,6 +184,12 @@ with st.sidebar:
             st.success(f"✅ Loaded {len(texts)} PDFs")
             chunks = [s for t in texts for s in semantic_chunking(t)]
             embeddings = embed_chunks(chunks)
+            
+            # Save in session_state
+            st.session_state['texts'] = texts
+            st.session_state['chunks'] = chunks
+            st.session_state['embeddings'] = embeddings
+
 
 # -------------------------------
 # MAIN APP
