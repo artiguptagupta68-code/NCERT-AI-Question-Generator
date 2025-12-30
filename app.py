@@ -39,6 +39,13 @@ st.set_page_config(page_title="NCERT AI Generator", layout="wide")
 st.title("📘 NCERT + UPSC AI Question Generator")
 
 # -------------------------------
+# INITIALIZE GLOBAL VARIABLES
+# -------------------------------
+texts = []
+chunks = []
+embeddings = np.empty((0, 384))
+
+# -------------------------------
 # DOWNLOAD & EXTRACT PDFs
 # -------------------------------
 def download_and_extract():
@@ -84,23 +91,23 @@ def semantic_chunking(text, embedder, max_words=180, sim_threshold=0.65):
     sentences = [s for s in sentences if len(s.split()) > 6]
     if len(sentences) < 2:
         return sentences
-    embeddings = embedder.encode(sentences, convert_to_numpy=True)
-    chunks = []
+    embeddings_local = embedder.encode(sentences, convert_to_numpy=True)
+    chunks_local = []
     current = [sentences[0]]
-    current_emb = embeddings[0]
+    current_emb = embeddings_local[0]
     for i in range(1, len(sentences)):
-        sim = cosine_similarity([current_emb], [embeddings[i]])[0][0]
+        sim = cosine_similarity([current_emb], [embeddings_local[i]])[0][0]
         length = sum(len(s.split()) for s in current)
         if sim < sim_threshold or length > max_words:
-            chunks.append(" ".join(current))
+            chunks_local.append(" ".join(current))
             current = [sentences[i]]
-            current_emb = embeddings[i]
+            current_emb = embeddings_local[i]
         else:
             current.append(sentences[i])
-            current_emb = np.mean([current_emb, embeddings[i]], axis=0)
+            current_emb = np.mean([current_emb, embeddings_local[i]], axis=0)
     if current:
-        chunks.append(" ".join(current))
-    return chunks
+        chunks_local.append(" ".join(current))
+    return chunks_local
 
 # -------------------------------
 # LOAD EMBEDDER
@@ -229,8 +236,6 @@ with st.sidebar:
 # -------------------------------
 # LOAD PDFs & CREATE CHUNKS (progress bar)
 # -------------------------------
-texts, chunks = [], []
-
 if not os.path.exists(EXTRACT_DIR) or not list(Path(EXTRACT_DIR).rglob("*.pdf")):
     download_and_extract()
 
@@ -246,11 +251,11 @@ if texts:
 else:
     st.warning("No PDF content found.")
 
-if not chunks:
-    st.warning("No PDF content loaded. Use sidebar to load NCERT PDFs.")
-else:
+if chunks:
     embeddings = embed_chunks(chunks)
     st.success(f"📄 {len(texts)} PDFs processed, 🧩 {len(chunks)} chunks created.")
+else:
+    st.warning("No PDF content loaded. Use sidebar to load NCERT PDFs.")
 
 # -------------------------------
 # MAIN TABS
