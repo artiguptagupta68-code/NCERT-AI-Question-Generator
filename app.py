@@ -1,13 +1,10 @@
-import os, zipfile, re, random
+import os, zipfile, re
 from pathlib import Path
 import streamlit as st
 import gdown
 import numpy as np
-
 from pypdf import PdfReader
-from sentence_transformers import SentenceTransformer, InputExample, losses
-from torch.utils.data import DataLoader
-from sklearn.metrics.pairwise import cosine_similarity
+from sentence_transformers import SentenceTransformer
 
 # -------------------------------
 # CONFIG
@@ -17,20 +14,10 @@ ZIP_PATH = "ncert.zip"
 EXTRACT_DIR = "ncert_extracted"
 SUBJECTS = ["Polity", "Economics", "Sociology", "Psychology", "Business Studies"]
 
-SUBJECT_KEYWORDS = {
-    "Polity": ["polity", "political", "constitution", "civics"],
-    "Economics": ["economics", "economic"],
-    "Sociology": ["sociology", "society"],
-    "Psychology": ["psychology"],
-    "Business Studies": ["business", "management"]
-}
-
 EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
 TOP_K = 6
 SIMILARITY_THRESHOLD_NCERT = 0.35
 SIMILARITY_THRESHOLD_UPSC = 0.45
-EPOCHS = 15
-BATCH_SIZE = 16
 
 # -------------------------------
 # STREAMLIT SETUP
@@ -38,30 +25,31 @@ BATCH_SIZE = 16
 st.set_page_config(page_title="NCERT AI Generator", layout="wide")
 st.title("📘 NCERT + UPSC AI Question Generator")
 
+# -------------------------------
+# LOAD EMBEDDER
+# -------------------------------
 @st.cache_resource
 def load_embedder():
-    return SentenceTransformer("all-MiniLM-L6-v2")
+    return SentenceTransformer(EMBEDDING_MODEL_NAME)
 
 embedder = load_embedder()
 
-# --------------------------------------------
+# -------------------------------
 # UTILITIES
-# --------------------------------------------
+# -------------------------------
 def download_and_extract():
+    """Download NCERT zip from Google Drive and extract all PDFs"""
     if not os.path.exists(ZIP_PATH):
-        gdown.download(
-            f"https://drive.google.com/uc?id={FILE_ID}",
-            ZIP_PATH,
-            quiet=False
-        )
-
+        st.info("📥 Downloading NCERT ZIP...")
+        gdown.download(f"https://drive.google.com/uc?id={FILE_ID}", ZIP_PATH, quiet=False)
+    
     os.makedirs(EXTRACT_DIR, exist_ok=True)
-
-    # extract main zip
-    with zipfile.ZipFile(ZIP_PATH, "r") as z:
-        z.extractall(EXTRACT_DIR)
-
-    # extract nested zips
+    
+    # Extract main zip
+    with zipfile.ZipFile(ZIP_PATH, "r") as zip_ref:
+        zip_ref.extractall(EXTRACT_DIR)
+    
+    # Extract nested zips if any
     for zfile in Path(EXTRACT_DIR).rglob("*.zip"):
         try:
             target = zfile.parent / zfile.stem
@@ -70,7 +58,8 @@ def download_and_extract():
                 inner.extractall(target)
         except:
             pass
-
+    
+    st.success("✅ NCERT PDFs extracted!")
 
 def read_pdf(path):
     try:
@@ -79,43 +68,42 @@ def read_pdf(path):
     except:
         return ""
 
-
 def clean_text(text):
-    text = re.sub(
-        r"(activity|let us|exercise|project|editor|reprint|copyright|isbn).*",
-        " ",
-        text,
-        flags=re.I,
-    )
-    return re.sub(r"\s+", " ", text).strip()
-
+    text = re.sub(r"(activity|let us|exercise|project|editor|reprint|copyright|isbn).*", " ", text, flags=re.I)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
 
 def load_all_texts():
+    """Load text from all PDFs"""
     texts = []
     for pdf in Path(EXTRACT_DIR).rglob("*.pdf"):
-        t = clean_text(read_pdf(str(pdf)))
-        if len(t.split()) > 50:
-            texts.append(t)
+        text = clean_text(read_pdf(str(pdf)))
+        if len(text.split()) > 50:
+            texts.append(text)
     return texts
 
 # -------------------------------
-# INITIALIZE GLOBAL VARIABLES
+# INITIALIZE GLOBALS
 # -------------------------------
 texts = []
 chunks = []
 embeddings = np.empty((0, 384))
 
 # -------------------------------
-# DOWNLOAD & EXTRACT PDFs
+# SIDEBAR BUTTON
 # -------------------------------
-def download_and_extract():
-    if not os.path.exists(ZIP_PATH):
-        st.info("📥 Downloading NCERT ZIP...")
-        gdown.download(f"https://drive.google.com/uc?id={FILE_ID}", ZIP_PATH, quiet=False)
-    os.makedirs(EXTRACT_DIR, exist_ok=True)
-    with zipfile.ZipFile(ZIP_PATH, "r") as zip_ref:
-        zip_ref.extractall(EXTRACT_DIR)
-    st.success("✅ NCERT PDFs extracted!")
+with st.sidebar:
+    if st.button("📥 Load NCERT PDFs"):
+        download_and_extract()
+        texts = load_all_texts()
+        if not texts:
+            st.warning("No PDF content found! Check if PDFs are readable.")
+        else:
+            st.success(f"✅ Loaded {len(texts)} PDFs with text content")
+            # Optionally, create embeddings now
+            chunks = texts  # You can replace this with semantic chunking
+            if chunks:
+                embeddings = embedder.encode(chunks, convert_to_numpy=True)
 
 
 
