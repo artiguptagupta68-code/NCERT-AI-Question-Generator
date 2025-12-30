@@ -70,13 +70,14 @@ def clean_text(text):
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 
-def load_all_texts(subjects):
+def load_all_texts(extract_dir=EXTRACT_DIR):
     texts = []
-    for pdf in Path(EXTRACT_DIR).rglob("*.pdf"):
+    for pdf in Path(extract_dir).rglob("*.pdf"):
         t = clean_text(read_pdf(pdf))
         if len(t.split()) > 100:
             texts.append(t)
     return texts
+
 
 # =========================================
 # SEMANTIC CHUNKING
