@@ -183,27 +183,10 @@ def is_conceptual_sentence(s):
         return False
     return True
 
-def estimate_flashcard(chunks, max_sentences_per_card=6):
-    """
-    Estimates the number of flashcards that can be generated.
-    """
-    all_text = " ".join(chunks)
-    sentences = re.split(r'(?<=[.?!])\s+', all_text)
-    conceptual_sentences = [s.strip() for s in sentences if is_conceptual_sentence(s)]
-    
-    if not conceptual_sentences:
-        return 0
-    num_cards = len(conceptual_sentences) // max_sentences_per_card
-    if len(conceptual_sentences) % max_sentences_per_card != 0:
-        num_cards += 1
-    return num_cards
-
-def generate_flashcard(chunks, topic):
+ef generate_flashcard(chunks, topic):
     """
     Generates ONE high-quality summarized flashcard from all relevant chunks.
     """
-
-    import re
 
     # ---------- STEP 1: CLEAN & FILTER USEFUL SENTENCES ----------
     def is_valid_sentence(s):
@@ -363,4 +346,3 @@ with tab4:
             st.write(c["content"])
         else:
             st.warning("No relevant content found to generate flashcard.")
-
