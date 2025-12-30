@@ -183,7 +183,7 @@ def is_conceptual_sentence(s):
         return False
     return True
 
-def estimate_flashcards(chunks, max_sentences_per_card=6):
+def estimate_flashcard(chunks, max_sentences_per_card=6):
     """
     Estimates the number of flashcards that can be generated.
     """
