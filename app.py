@@ -70,7 +70,7 @@ def clean_text(text):
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 
-def load_all_texts():
+def load_all_texts(subjects):
     texts = []
     for pdf in Path(EXTRACT_DIR).rglob("*.pdf"):
         t = clean_text(read_pdf(pdf))
