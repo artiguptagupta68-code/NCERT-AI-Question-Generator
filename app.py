@@ -45,7 +45,6 @@ def download_and_extract():
     if not os.path.exists(ZIP_PATH):
         st.info("📥 Downloading NCERT ZIP...")
         gdown.download(f"https://drive.google.com/uc?id={FILE_ID}", ZIP_PATH, quiet=False)
-
     os.makedirs(EXTRACT_DIR, exist_ok=True)
     with zipfile.ZipFile(ZIP_PATH, "r") as zip_ref:
         zip_ref.extractall(EXTRACT_DIR)
@@ -198,6 +197,24 @@ def generate_flashcard(chunks, topic):
              "content": f"Concept Overview:\n{overview}\n\nExplanation:\n{explanation}\n\nConclusion:\n{conclusion}\n\nPoints:\n- {'\n- '.join(points)}"}]
 
 # -------------------------------
+# MCQ GENERATOR
+# -------------------------------
+def generate_mcqs(chunks, topic, n, standard="NCERT"):
+    sents = [s for ch in chunks for s in re.split(r"[.;]", ch) if is_conceptual(s)]
+    if not sents:
+        return []
+    random.shuffle(sents)
+    mcqs = []
+    for s in sents[:n]:
+        opts = random.sample(sents, min(4, len(sents)))
+        if s not in opts:
+            opts[0] = s
+        random.shuffle(opts)
+        question_text = f"Explain {topic}." if standard=="NCERT" else f"Analyse the importance of {topic}."
+        mcqs.append({"q": question_text, "options": opts, "answer": opts.index(s)})
+    return mcqs
+
+# -------------------------------
 # SIDEBAR
 # -------------------------------
 with st.sidebar:
@@ -210,17 +227,15 @@ with st.sidebar:
             train_embedding_model(chunks, embedder, epochs=EPOCHS)
 
 # -------------------------------
-# MAIN
+# AUTO-LOAD PDFs & CHUNKS
 # -------------------------------
-subject = st.selectbox("Subject", SUBJECTS)
-topic = st.text_input("Topic")
-num_q = st.number_input("Number of Questions", 1, 10, 5)
-
 texts, chunks = [], []
-if os.path.exists(EXTRACT_DIR):
-    texts = load_all_texts(subject)
-    for t in texts:
-        chunks.extend(semantic_chunking(t, embedder))
+if not os.path.exists(EXTRACT_DIR) or not list(Path(EXTRACT_DIR).rglob("*.pdf")):
+    download_and_extract()
+
+texts = load_all_texts(subject)
+for t in texts:
+    chunks.extend(semantic_chunking(t, embedder))
 
 if not chunks:
     st.warning("No PDF content loaded. Use sidebar to load NCERT PDFs.")
@@ -230,9 +245,11 @@ else:
     st.write(f"🧩 Chunks created: {len(chunks)}")
 
 # -------------------------------
-# TABS
+# MAIN TABS
 # -------------------------------
-tab1, tab2, tab3, tab4 = st.tabs(["📝 Subjective", "🧠 MCQs", "💬 Ask NCERT", "🧠 Flashcards"])
+tab1, tab2, tab3, tab4 = st.tabs(["📝 Subjective", "🧠 MCQs", "💬 Chatbot", "🧠 Flashcards"])
+topic = st.text_input("Topic")
+num_q = st.number_input("Number of Questions", 1, 10, 5)
 
 # SUBJECTIVE
 with tab1:
@@ -245,6 +262,41 @@ with tab1:
             for i, q in enumerate([f"Explain {topic}."]*min(num_q, len(rel)), 1):
                 st.write(f"{i}. {q}")
 
+# MCQs
+with tab2:
+    std2 = st.radio("Standard", ["NCERT", "UPSC"], key="mcq_std", horizontal=True)
+    if st.button("Generate MCQs", key="mcq_btn"):
+        rel = retrieve_relevant_chunks(chunks, embeddings, topic, std2)
+        mcqs = generate_mcqs(rel, topic, num_q, std2)
+        if not mcqs:
+            st.warning("No MCQs could be generated.")
+        else:
+            for i, m in enumerate(mcqs, 1):
+                st.markdown(f"**Q{i}. {m['q']}**")
+                for j, o in enumerate(m["options"]):
+                    st.write(f"{chr(97+j)}) {o}")
+                st.write(f"✅ Answer: {chr(97+m['answer'])}")
+                st.write("---")
+
+# CHATBOT
+with tab3:
+    chatbot_mode = st.radio("Answer Style", ["NCERT", "UPSC"], horizontal=True)
+    user_q = st.text_input("Enter your question", key="chat_q")
+    if st.button("Ask NCERT", key="chat_btn"):
+        if not user_q.strip():
+            st.error("Please enter a question.")
+        else:
+            retrieved = retrieve_relevant_chunks(chunks, embeddings, user_q, mode=chatbot_mode)
+            if not retrieved:
+                st.warning("No relevant content found in NCERT PDFs.")
+            else:
+                answer_sentences = []
+                for r in retrieved:
+                    for s in re.split(r"(?<=[.?!])\s+", r):
+                        if is_conceptual(s):
+                            answer_sentences.append(normalize_text(s))
+                st.write(" ".join(answer_sentences[:6]))
+
 # FLASHCARDS
 with tab4:
     mode = st.radio("Depth", ["NCERT", "UPSC"], key="flash_std", horizontal=True)
@@ -256,4 +308,4 @@ with tab4:
             st.markdown(f"### 📌 {c['title']}")
             st.write(c["content"])
         else:
-            st.warning("No relevant content found.")
+            st.warning("No relevant content found for flashcards.")
