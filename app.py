@@ -109,7 +109,7 @@ def semantic_chunking(text, embedder, max_words=180, sim_threshold=0.65):
 def load_embedder():
     return SentenceTransformer(EMBEDDING_MODEL_NAME)
 
-embedder = load_embedder()  # MUST come first before chunks
+embedder = load_embedder()
 
 # -------------------------------
 # TRAINING
@@ -227,7 +227,7 @@ with st.sidebar:
             train_embedding_model(chunks, embedder, epochs=EPOCHS)
 
 # -------------------------------
-# LOAD PDFs & CREATE CHUNKS
+# LOAD PDFs & CREATE CHUNKS (progress bar)
 # -------------------------------
 texts, chunks = [], []
 
@@ -235,15 +235,22 @@ if not os.path.exists(EXTRACT_DIR) or not list(Path(EXTRACT_DIR).rglob("*.pdf"))
     download_and_extract()
 
 texts = load_all_texts(subject=None)
-for t in texts:
-    chunks.extend(semantic_chunking(t, embedder))
+if texts:
+    st.info("🧩 Creating semantic chunks from PDFs...")
+    progress_bar = st.progress(0)
+    for idx, t in enumerate(texts, 1):
+        new_chunks = semantic_chunking(t, embedder)
+        chunks.extend(new_chunks)
+        progress_bar.progress(idx / len(texts))
+    progress_bar.empty()
+else:
+    st.warning("No PDF content found.")
 
 if not chunks:
     st.warning("No PDF content loaded. Use sidebar to load NCERT PDFs.")
 else:
     embeddings = embed_chunks(chunks)
-    st.write(f"📄 PDFs used: {len(texts)}")
-    st.write(f"🧩 Chunks created: {len(chunks)}")
+    st.success(f"📄 {len(texts)} PDFs processed, 🧩 {len(chunks)} chunks created.")
 
 # -------------------------------
 # MAIN TABS
