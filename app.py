@@ -5,7 +5,6 @@ import re
 
 import streamlit as st
 import gdown
-import numpy as np
 import pandas as pd
 from pypdf import PdfReader
 from sentence_transformers import SentenceTransformer
@@ -143,9 +142,9 @@ videos = {
 }
 
 # -----------------------------
-# Streamlit Sidebar
+# Streamlit UI
 # -----------------------------
-st.sidebar.header("🎓 Student Settings")
+st.sidebar.header("🎓 Select Options")
 selected_subject = st.sidebar.selectbox("Select Subject", SUBJECTS)
 selected_level = st.sidebar.selectbox("Select Level", ["Beginner", "Intermediate", "Advanced"])
 selected_topics = st.sidebar.multiselect("Select Topic(s)", all_topics)
