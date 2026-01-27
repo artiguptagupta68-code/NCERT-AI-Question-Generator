@@ -14,7 +14,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 # -----------------------------
 # CONFIG
 # -----------------------------
-FILE_ID = "1gdiCsGOeIyaDlJ--9qon8VTya3dbjr6G"  # Google Drive file ID
+FILE_ID = "1gdiCsGOeIyaDlJ--9qon8VTya3dbjr6G"
 ZIP_PATH = "ncert.zip"
 EXTRACT_DIR = "ncert_extracted"
 
@@ -64,11 +64,13 @@ def clean_text(text):
 
 def load_all_texts():
     texts = []
+    paths = []
     for pdf in Path(EXTRACT_DIR).rglob("*.pdf"):
         t = clean_text(read_pdf(str(pdf)))
         if len(t.split()) > 50:
             texts.append(t)
-    return texts
+            paths.append(pdf)
+    return texts, paths
 
 # -----------------------------
 # EXTRACT TOPICS
@@ -85,7 +87,7 @@ def extract_topics_from_text(text):
 
 @st.cache_data
 def get_all_topics():
-    texts = load_all_texts()
+    texts, _ = load_all_texts()
     all_topics = []
     for text in texts:
         all_topics.extend(extract_topics_from_text(text))
@@ -94,7 +96,7 @@ def get_all_topics():
 all_topics = get_all_topics()
 
 # -----------------------------
-# Sentence Transformer for TF-IDF similarity
+# Sentence Transformer
 # -----------------------------
 @st.cache_resource
 def load_embedder():
@@ -141,7 +143,7 @@ videos = {
 }
 
 # -----------------------------
-# Streamlit UI
+# Streamlit Sidebar
 # -----------------------------
 st.sidebar.header("🎓 Student Settings")
 selected_subject = st.sidebar.selectbox("Select Subject", SUBJECTS)
@@ -149,11 +151,34 @@ selected_level = st.sidebar.selectbox("Select Level", ["Beginner", "Intermediate
 selected_topics = st.sidebar.multiselect("Select Topic(s)", all_topics)
 
 # -----------------------------
+# Recommend chapters using embeddings
+# -----------------------------
+@st.cache_data
+def get_chapter_recommendations(topics, top_n=5):
+    if not topics:
+        return pd.DataFrame({"Message":["Please select topics"]})
+    
+    texts, paths = load_all_texts()
+    text_embeddings = embedder.encode(texts, convert_to_tensor=True)
+    topic_embedding = embedder.encode([" ".join(topics)], convert_to_tensor=True)
+    
+    sims = cosine_similarity(topic_embedding.cpu().numpy(), text_embeddings.cpu().numpy()).flatten()
+    
+    top_idx = sims.argsort()[-top_n:][::-1]
+    results = []
+    for i in top_idx:
+        results.append({
+            "Chapter PDF": str(paths[i].name),
+            "Similarity Score": sims[i]
+        })
+    return pd.DataFrame(results)
+
+# -----------------------------
 # Recommend books & videos
 # -----------------------------
 def recommend_materials(subject, level, topics):
     if not topics:
-        return pd.DataFrame({"Message": ["Please select at least one topic"]})
+        return pd.DataFrame({"Message":["Please select at least one topic"]})
     recommended_books = books.get(subject, {}).get(level, [])
     recommended_videos = videos.get(subject, {}).get(level, [])
     return pd.DataFrame({
@@ -165,7 +190,12 @@ def recommend_materials(subject, level, topics):
 # -----------------------------
 # Display recommendations
 # -----------------------------
+st.subheader("📚 Chapter Recommendations")
+if st.button("Get Chapter Recommendations"):
+    chapter_recs = get_chapter_recommendations(selected_topics)
+    st.dataframe(chapter_recs)
+
 st.subheader("📖 Book & Video Recommendations")
-if st.button("Get Recommendations"):
-    recommendations = recommend_materials(selected_subject, selected_level, selected_topics)
-    st.dataframe(recommendations)
+if st.button("Get Books & Videos"):
+    materials = recommend_materials(selected_subject, selected_level, selected_topics)
+    st.dataframe(materials)
